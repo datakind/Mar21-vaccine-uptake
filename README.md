@@ -49,6 +49,7 @@ First, we scraped all the posts in pre-identified subreddits and saved posts wit
 
 Note: All user information is private through the reddit API. 
 
+
 ### Subreddits Scraped 
 
 * r/CoronaVirus 
