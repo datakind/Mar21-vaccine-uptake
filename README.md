@@ -9,6 +9,10 @@ Volunteers will use open and scraped data to analyze trends in public sentiment 
 
 * [NLP in the Social Sector](https://ssir.org/articles/entry/how_the_social_sector_can_use_natural_language_processing): Article written by DataKind's own Ben Kinsella on how the social sector can gain insights from text data. 
 
+* [Text Mining with R](https://www.tidytextmining.com/): A great introduction to NLP using R by Julia Silge and David Robinson. 
+
+* [Supervised Machine Learning for Text Analysis](https://smltar.com/): Again, another great NLP book for those R users!
+
 # Data:
 
 Data can be found [here](https://drive.google.com/drive/folders/1FLxdBudO8_vfCk0VEylYRt0UouD7dPAq)
