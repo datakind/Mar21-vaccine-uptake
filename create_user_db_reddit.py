@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 
-comments = pd.read_csv('data/00_raw/reddit_comments.csv')
+comments = pd.read_csv('data/01_cleaned/reddit_comments_cleaned.csv')
 posts = pd.read_csv('data/00_raw/reddit_posts.csv')
 
 print(comments)

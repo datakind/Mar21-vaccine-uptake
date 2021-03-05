@@ -2,7 +2,7 @@ import pandas as pd
 import re
 
 twitter_users = pd.read_csv('data/00_raw/twitter_user.csv')
-twitter_text = pd.read_csv('data/00_raw/twitter_text.csv')
+twitter_text = pd.read_csv('data/01_cleaned/twitter_data_cleaned.csv')
 twitter_hashtag = pd.read_csv('data/00_raw/twitter_hashtag.csv')
 
 twitter_text.drop(['geo', 'coordinates', 'place', 'possibly_sensitive'], axis=1, inplace=True)
