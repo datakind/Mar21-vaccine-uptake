@@ -367,6 +367,8 @@ if __name__ == '__main__':
 
     # read in args
     parser=ArgumentParser()
+    # existing_file is an optional argument if this script is being run continuously
+    # allows for new data to be added rather than overwriting the existing data
     parser.add_argument('--existing_file', default=None)
     args = parser.parse_args()
 
