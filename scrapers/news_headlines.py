@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from bs4 import BeautifulSoup
+from argparse import ArgumentParser
 
 """
 Web scraper tool for six U.S. media outlets spanning the political spectrum:
@@ -364,6 +365,12 @@ def run_safely(f, outlet, *args):
 
 if __name__ == '__main__':
 
+    # read in args
+    parser=ArgumentParser()
+    parser.add_argument('--existing_file', default=None)
+    args = parser.parse_args()
+
+    # scraping pipeline
     start_time = time.time()
     print('Beginning scraping pipeline.')
 
@@ -384,4 +391,5 @@ if __name__ == '__main__':
                           politico_df,
                           dailkos_df])
 
-    save_data(all_data)
+    # save data
+    save_data(all_data, args.existing_file)
