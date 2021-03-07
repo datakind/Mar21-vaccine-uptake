@@ -1,0 +1,6 @@
+hp_params,vals
+validation_set,100% Corpus
+topics,4
+alpha,0.9099999999999999
+beta,0.9099999999999999
+coherence,0.38492777426433533
