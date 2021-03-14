@@ -1,0 +1,1735 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import os\n",
+    "PROJ_ROOT = os.path.join(os.pardir)\n",
+    "\n",
+    "import pyLDAvis\n",
+    "import pyLDAvis.gensim\n",
+    "pyLDAvis.enable_notebook()\n",
+    "\n",
+    "import operator\n",
+    "\n",
+    "import warnings\n",
+    "warnings.filterwarnings('ignore')\n",
+    "\n",
+    "from tqdm import tqdm_notebook as tqdm\n",
+    "import re\n",
+    "import pickle\n",
+    "import seaborn as sns\n",
+    "import matplotlib.pyplot as plt\n",
+    "\n",
+    "data_path = os.path.join(PROJ_ROOT, \n",
+    "                         'data')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "full_data=pd.read_csv(data_path+'\\\\'+'temp_full_data.csv')\n",
+    "tweets=full_data.full_text"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## LDA Topic Modeling"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Load necessary files"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "application/vnd.jupyter.widget-view+json": {
+       "model_id": "df9f864d13e143a08d9f47a044012e25",
+       "version_major": 2,
+       "version_minor": 0
+      },
+      "text/plain": [
+       "  0%|          | 0/4 [00:00<?, ?it/s]"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "full_data=pd.read_csv(data_path+'\\\\'+'temp_full_data.csv')\n",
+    "\n",
+    "files = ['all_tokens.pkl','tweets_gdict.pkl','corpus.pkl',\n",
+    "         'texts.pkl']\n",
+    "\n",
+    "for fn in tqdm(files):\n",
+    "    var=re.findall(r'(.*)\\.',fn)[0]\n",
+    "    globals()[var] = pickle.load( open( data_path+'\\\\'+fn, 'rb' ) )"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "coherence_values = pickle.load(open(data_path+'\\\\'+'coherence_values.pkl','rb'))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Plot results of the naive models"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "image/png": "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9OnTh2+++eauHzRHjx5l6tSpBWoKOp2Obdu20a5dO+zs7MwdcpmoVCqmTZvGypUrCxzfsmULNjY2hQZdgL7pKS0tjf379xuPJScnc/jwYe6//36zx3wvjh07BlBkue5UWd/T2zk4ONChQwe2b99e4MvCtm3bcHFxITAwsMjXGd7Hbdu2GY9pNBr27NlTod/j3377jbfffpu2bdvy3XffUbdu3bu+5vLly3zwwQeFRvFt2bIFHx8fvL29zRVuuZI+nyogKSmJmTNn4u3tzdChQzl16lSB84YqfExMDE2bNsXZ2Znw8HBWrFjBq6++yhtvvIGTkxOrV6/m3LlzrFq1yhrFMIm7uztDhw5lxYoVODs706FDB44cOcJXX33F0KFD8fX1JTk5uUBZO3bsSKdOnXjzzTeZMGECbm5ufPHFF7i4uBibOiqqc+fOUaNGjSI/UO4sZ2V9T+80duxYRowYwfjx4+nfvz9///033377LW+99ZZxeH1GRgYXLlygUaNGuLu74+3tTf/+/ZkxYwZZWVn4+vqyZMkSUlNTGTVqlJVLVDSNRsN//vMfatasyUsvvcSFCxcKnK9fvz5169YtVNbQ0FACAwN59913SU5Opl69evz888/s2rWLL774olL0bwEyybQqWLdundK8efNi/1u/fr3y448/Ks2bN1cOHDhgfF1cXJwyfvx45f7771eCgoKUIUOGKH/++acVS2IajUajfP3110pYWJgSGBioPPjgg8rChQsVrVarKIpSZFlTUlKUd955R+nQoYPSrl075cUXX1QuXrxorSKY7L333lO6d+9e5Lmq8J4aynD7xEtFUZTt27cr/fr1U1q1aqX06tVL+fbbbwucP3DggNK8eXPlxx9/NB7LyclRZs6cqYSEhCjBwcHKkCFDSpyQa2l3lvXQoUMl/t0uWLBAUZSiy5qUlKS8++67ygMPPKAEBgYq/fv3L3FSakWkUpRKNDBcCCFElSB9PkIIISxOko8QQgiLk+QjhBDC4iT5CCGEsDhJPkIIISxOko8QQgiLk+QjRL533nmHgICAYidkxsXFERAQwBdffGHhyArHYMp/cXFx5fZcw7beP/30U7ndU1RvssKBEHeYO3cuYWFhFXLraXd390JbZH/88ccATJ48udC15aVJkybMnj2bdu3alds9RfUmyUeIO6Snp/Pxxx8zZ84ca4dS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\n",
+      "text/plain": [
+       "<Figure size 432x288 with 1 Axes>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#plot the coherence values for different topic numbers\n",
+    "limit=15; start=1\n",
+    "x=range(start, limit)\n",
+    "plt.plot(x, coherence_values)\n",
+    "plt.xlabel('Num Topics')\n",
+    "plt.ylabel('Coherence score')\n",
+    "plt.legend('coherence_values', loc='best')\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 44,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[0.2409125597912077,\n",
+      " 0.2800806042947272,\n",
+      " 0.3171639175987016,\n",
+      " 0.3215055649681553,\n",
+      " 0.32179694064705433,\n",
+      " 0.2921852213487059,\n",
+      " 0.30038541763491633,\n",
+      " 0.2984128495380771,\n",
+      " 0.27927221557560233,\n",
+      " 0.2932006816855416,\n",
+      " 0.2794232567110878,\n",
+      " 0.2769115091589724,\n",
+      " 0.27545853819011845,\n",
+      " 0.29085384301829936]\n",
+      "4 0.32179694064705433\n",
+      "5  number of topics to be used\n"
+     ]
+    }
+   ],
+   "source": [
+    "from pprint import pprint\n",
+    "#print the coherence values, and the index & cv for the highest cv value\n",
+    "pprint(coherence_values)\n",
+    "index, value = max(enumerate(coherence_values), key=operator.itemgetter(1))\n",
+    "num_topics = len(coherence_values[:index+1])\n",
+    "print(index, value)\n",
+    "print(num_topics, ' number of topics to be used')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Load and view the parameters of the model with 4 topics\n",
+    "The coherence values for this number of topics is slightly higher than the previous model. There will be one extra topic, but, some of the topics may have words that overlap."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 45,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "models = pickle.load( open( data_path+'\\\\'+'all_lda_models_4t.pkl', 'rb' ) )\n",
+    "model_results = pickle.load(open(data_path+'\\\\'+'model_results_4t.pkl','rb'))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 46,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>validation_set</th>\n",
+       "      <th>topics</th>\n",
+       "      <th>alpha</th>\n",
+       "      <th>beta</th>\n",
+       "      <th>coherence</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>100% Corpus</td>\n",
+       "      <td>4</td>\n",
+       "      <td>0.01</td>\n",
+       "      <td>0.01</td>\n",
+       "      <td>0.301495</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>100% Corpus</td>\n",
+       "      <td>4</td>\n",
+       "      <td>0.01</td>\n",
+       "      <td>0.31</td>\n",
+       "      <td>0.311898</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>100% Corpus</td>\n",
+       "      <td>4</td>\n",
+       "      <td>0.01</td>\n",
+       "      <td>0.61</td>\n",
+       "      <td>0.320993</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>100% Corpus</td>\n",
+       "      <td>4</td>\n",
+       "      <td>0.01</td>\n",
+       "      <td>0.91</td>\n",
+       "      <td>0.325178</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>100% Corpus</td>\n",
+       "      <td>4</td>\n",
+       "      <td>0.01</td>\n",
+       "      <td>symmetric</td>\n",
+       "      <td>0.317481</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "  validation_set  topics alpha       beta  coherence\n",
+       "0    100% Corpus       4  0.01       0.01   0.301495\n",
+       "1    100% Corpus       4  0.01       0.31   0.311898\n",
+       "2    100% Corpus       4  0.01       0.61   0.320993\n",
+       "3    100% Corpus       4  0.01       0.91   0.325178\n",
+       "4    100% Corpus       4  0.01  symmetric   0.317481"
+      ]
+     },
+     "execution_count": 46,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "#create a df of the param values and results\n",
+    "lda_tuning = pd.DataFrame(model_results)\n",
+    "lda_tuning.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 47,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "validation_set    100% Corpus\n",
+       "topics                      4\n",
+       "alpha               symmetric\n",
+       "beta                     0.91\n",
+       "coherence            0.348915\n",
+       "Name: 28, dtype: object"
+      ]
+     },
+     "execution_count": 47,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# find the row with the coherence value and display the parameters\n",
+    "idx =lda_tuning['coherence'].idxmax(axis=0)\n",
+    "lda_tuning.iloc[idx]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### View the top words of the LDA model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 48,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[(0,\n",
+      "  '0.006*\"immunity\" + 0.003*\"️\" + 0.002*\"doctor_policy_vaccine\" + '\n",
+      "  '0.002*\"insurance_pharmaceutical_biotech\" + 0.002*\"medtech_retweet\" + '\n",
+      "  '0.002*\"patient_nhs_fmrevolution_today\" + '\n",
+      "  '0.002*\"todaysmedicalupdate_medicine_health\" + 0.002*\"sale\" + 0.002*\"/j\" + '\n",
+      "  '0.001*\"$\" + 0.001*\"people_outside_city\" + 0.001*\"shot_javits_center_75\" + '\n",
+      "  '0.001*\"percent_queen_site_mayor\" + 0.001*\"bill_de_blasio\" + '\n",
+      "  '0.001*\"account_42_percent\"'),\n",
+      " (1,\n",
+      "  '0.016*\"coronavirus\" + 0.011*\"death\" + 0.005*\"case\" + 0.005*\"daily\" + '\n",
+      "  '0.003*\"new_case\" + 0.003*\"coronaviruscoronavirus\" + 0.003*\"trend\" + '\n",
+      "  '0.003*\"today\" + 0.002*\"new\" + 0.002*\"░_░_░_░\" + 0.002*\"total\" + '\n",
+      "  '0.002*\"update\" + 0.002*\"feb\" + 0.002*\"maskup\" + 0.002*\"total_death\"'),\n",
+      " (2,\n",
+      "  '0.035*\"coronavirus\" + 0.018*\"vaccine\" + 0.017*\"vaccinate\" + 0.011*\"people\" '\n",
+      "  '+ 0.011*\"pandemic\" + 0.010*\"virus\" + 0.009*\"get\" + 0.006*\"vaccination\" + '\n",
+      "  '0.006*\"need\" + 0.006*\"vax\" + 0.005*\"know\" + 0.004*\"want\" + 0.004*\"like\" + '\n",
+      "  '0.004*\"time\" + 0.003*\"work\"'),\n",
+      " (3,\n",
+      "  '0.074*\"coronavirus\" + 0.067*\"vaccine\" + 0.017*\"dose\" + 0.010*\"pfizer\" + '\n",
+      "  '0.008*\"vaccination\" + 0.007*\"vaccinate\" + 0.007*\"coronavirus vaccine\" + '\n",
+      "  '0.006*\"j&;j\" + 0.006*\"moderna\" + 0.005*\"receive\" + 0.005*\"shoot\" + '\n",
+      "  '0.005*\"today\" + 0.005*\"week\" + 0.005*\"new\" + 0.004*\"people\"')]\n"
+     ]
+    }
+   ],
+   "source": [
+    "#display the topics along with the top 15 words for each topic\n",
+    "pprint(models[idx].print_topics(num_words=15))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 49,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "\n",
+       "<link rel=\"stylesheet\" type=\"text/css\" href=\"https://cdn.jsdelivr.net/gh/bmabey/pyLDAvis@3.2.2/pyLDAvis/js/ldavis.v1.0.0.css\">\n",
+       "\n",
+       "\n",
+       "<div id=\"ldavis_el970818844640794728989098904\"></div>\n",
+       "<script type=\"text/javascript\">\n",
+       "\n",
+       "var ldavis_el970818844640794728989098904_data = {\"mdsDat\": {\"x\": [0.16899763332062528, 0.1525946460476374, -0.14918532733214288, -0.17240695203611991], \"y\": [0.12272950799072926, -0.1273718743947732, -0.021719154616300005, 0.02636152102034402], \"topics\": [1, 2, 3, 4], \"cluster\": [1, 1, 1, 1], \"Freq\": [53.1609889664723, 36.26940998490432, 5.615407680026211, 4.954193368597165]}, \"tinfo\": {\"Term\": [\"vaccine\", \"coronavirus\", \"dose\", \"death\", \"pfizer\", \"j&;j\", \"moderna\", \"case\", \"immunity\", \"virus\", \"receive\", \"shoot\", \"coronavirus vaccine\", \"today\", \"vaccinate\", \"know\", \"want\", \"pandemic\", \"like\", \"week\", \"update\", \"vax\", \"new\", \"people\", \"johnson_johnson\", \"vaccination\", \"need\", \"think\", \"trump\", \"daily\", \"like\", \"want\", \"think\", \"firefauci\", \"trump\", \"mask\", \"thing\", \"stop\", \"wear_mask\", \"wrong\", \"rig\", \"let\", \"kill\", \"pay\", \"flu\", \"lie\", \"long\", \"feel\", \"believe\", \"risk\", \"fauci\", \"yes\", \"life\", \"not\", \"kid\", \"spread\", \"control\", \"anti_vax\", \"family\", \"friend\", \"know\", \"try\", \"school\", \"point\", \"care\", \"child\", \"vax\", \"virus\", \"die\", \"need\", \"pandemic\", \"people\", \"year\", \"vaccinate\", \"time\", \"get\", \"tell\", \"way\", \"coronavirus\", \"work\", \"good\", \"vaccination\", \"vaccine\", \"live\", \"death\", \"help\", \"come\", \"day\", \"2\", \"dose\", \"j&;j\", \"pfizer\", \"moderna\", \"receive\", \"johnson_johnson\", \"shoot\", \"|\", \"administer\", \"available\", \"astrazeneca\", \"u.s\", \"county\", \"pfizer_moderna\", \"fda\", \"appointment\", \"million_dose\", \"supply\", \"pfizer_biontech\", \"deliver\", \"resident\", \"eligible\", \"announce\", \"2_dose\", \"receive_dose\", \"shot\", \"covax\", \"single_dose\", \"approve\", \"arrive\", \"site\", \"\\ud83d\\udc89\", \"vaccine\", \"india\", \"week\", \"coronavirus vaccine\", \"coronavirus\", \"update\", \"news\", \"today\", \"new\", \"vaccination\", \"state\", \"datum\", \"variant\", \"vaccinate\", \"day\", \"get\", \"2\", \"people\", \"pandemic\", \"new_case\", \"daily\", \"coronaviruscoronavirus\", \"\\u2591_\\u2591_\\u2591_\\u2591\", \"total_death\", \"total_case\", \"today_recovery\", \"coronatrackernepal_bot_telegram\", \"coronavirus_19_sarscov2_staysafe_source\", \"total_active_case\", \"total_recovery\", \"staysafe\", \"coronaviruspandemic\", \"trend\", \"app\", \"j&;k\", \"feb\", \"coronavirusinfo_usa_new_case\", \"active_case\", \"icu\", \"lakh\", \"active\", \"ale\", \"ap_news\", \"maskup\", \"protest\", \"punjab\", \"coronavirus\\u30fc19\", \"coronaviruscases\", \"coronavirusupdate\", \"zoom\", \"@pmoindia\", \"repoing\", \"iran\", \"death\", \"case\", \"coronavirus\", \"total\", \"repoed\", \"today\", \"new\", \"update\", \"coronavirus_19\", \"\\ufe0f\", \"doctor_policy_vaccine\", \"insurance_pharmaceutical_biotech\", \"medtech_retweet\", \"patient_nhs_fmrevolution_today\", \"todaysmedicalupdate_medicine_health\", \"/j\", \"account_42_percent\", \"bill_de_blasio\", \"people_outside_city\", \"percent_queen_site_mayor\", \"shot_javits_center_75\", \"dose_fig_variant\", \"pfizer_study_3rd\", \"wellness\", \"help_restaurant_big\", \"recognize_privilege_little_girl\", \"teacher_good_work\", \"way_philadelphia_phillies_pitch\", \"vitamin\", \"capitol_qanon_mitch_mcconnell\", \"nancy_blm_proud_boy\", \"supplement\", \"\\ud83d\\ude0e\", \"@coronavirus_vax\", \"\\u274c\", \"boost_immunity\", \"2_dose_authorize\", \"dr_tam_cpho_naci\", \"look_modify_time\", \"vaccinate_compromise_effectiveness\", \"sale\", \"\\ud83c\\udde8_\\ud83c\\uddf3\", \"flu_viually_disappear\", \"\\u00b0\", \"immunesystem\", \"immunity\", \"j.\", \"$\", \"health\", \"healthy\", \"j\"], \"Freq\": [22391.0, 30729.0, 4025.0, 1310.0, 2435.0, 1515.0, 1418.0, 1093.0, 651.0, 3992.0, 1282.0, 1222.0, 2112.0, 1630.0, 7646.0, 1759.0, 1528.0, 4410.0, 1458.0, 1308.0, 753.0, 2058.0, 1720.0, 4874.0, 781.0, 4087.0, 2278.0, 1076.0, 1027.0, 205.0, 1455.927314007033, 1526.3830782158673, 1074.6318043228498, 996.2769148624197, 1025.61965408002, 746.0011671722517, 617.5734949103046, 719.0297722994663, 525.6152018598084, 554.9461993014908, 721.061140732446, 792.7820503970046, 446.8434999539061, 503.59154416346854, 405.8887211426717, 399.76956672177516, 663.377297581848, 501.89899806433925, 406.5218294603125, 564.2002842947778, 473.53420458343726, 508.3400831414501, 477.07255785683236, 360.73467127112264, 383.226599230904, 560.0752542176341, 393.05051054951736, 324.19251364858866, 360.74492987534546, 366.48196158874424, 1741.0585029093506, 556.5805721108102, 565.1089329539545, 478.4257460323326, 471.55141002346465, 518.7099664406306, 1960.4036112857052, 3697.3993773290968, 733.5270340309742, 2067.8771986393826, 3782.2509708051953, 3986.2305852195504, 1196.5505776018595, 5872.228746072982, 1398.7367078434067, 3069.2540817730405, 702.9334042856061, 829.4302341961148, 12326.761246550686, 1220.2611371050455, 671.1893688947976, 2094.731010956136, 6330.135924085558, 773.8772967789077, 905.8573300469238, 819.9760858208754, 726.6666233563526, 787.2144710497447, 748.1942013199722, 4023.46784940196, 1513.5586923444, 2430.8524390933385, 1415.4732515846981, 1279.405246053337, 779.6646560290103, 1218.1137213841369, 601.774588581377, 486.3233751130905, 607.0265336125809, 445.4663313230362, 512.7606892392091, 423.00180444855954, 596.7760690257055, 339.30714168467017, 448.2011396240487, 342.82833913042214, 387.00287867798716, 280.9260185890704, 356.91428135847184, 336.7044148288137, 329.1843736301089, 311.4211198157673, 419.24862824841875, 296.32158811925046, 398.9337205694633, 255.24588896382716, 222.57537907024687, 326.3105411052739, 259.15897394062097, 278.6785258902435, 514.6973028609077, 16060.677382526921, 534.7371415842775, 1124.9303883144148, 1702.6912265841538, 17791.384042125646, 677.9372078530776, 678.1176638815733, 1186.9154038146194, 1122.3095596388773, 1991.268074829965, 796.4814713798811, 580.5377248689849, 565.123969193877, 1772.9486612448618, 674.4207326211554, 883.0138473544906, 626.8289124405095, 886.724214437591, 626.9940774908898, 124.75560041076464, 200.41340092801278, 119.18033402032795, 83.48214593111129, 67.92593695987819, 66.45321202751134, 56.629594353499854, 56.49008605395615, 56.49008605395615, 56.49008605395615, 56.49008605395615, 64.69800204564888, 59.261047187049165, 108.06498185814974, 66.07273563818899, 44.55194086181476, 69.21160057185988, 33.83013379231635, 37.015032939811775, 46.524562193104934, 46.65522746726658, 47.768238842052114, 51.250519533079974, 39.44861437667228, 68.58334539653696, 51.7789555778968, 40.98549041000221, 61.244213129806234, 34.586571492794775, 27.139579992510054, 35.387696499442356, 39.11222255778314, 51.61237856876824, 36.94065056292683, 402.0965767447445, 204.1926801969069, 610.4827832086104, 76.99498606697502, 63.45818551654122, 95.79823471691935, 84.27717395027842, 73.83503191037033, 57.06647114092828, 89.87846045958055, 58.53516222394659, 58.53516222394659, 58.53516222394659, 58.53516222394659, 58.53516222394659, 50.64579847747901, 44.91607067732468, 44.91607067732468, 44.91607067732468, 44.91607067732468, 44.91607067732468, 44.45950651587018, 44.45950651587018, 42.49870024196794, 22.729605279846044, 22.729605279846044, 22.729605279846044, 22.729605279846044, 27.26300896629464, 20.737424953726855, 20.737424953726855, 21.712746580782717, 20.54006770975924, 17.151372513082155, 21.26064001886611, 20.37365258006885, 30.449728062635394, 30.449728062635394, 30.449728062635394, 30.449728062635394, 50.85196917514105, 22.15109064007782, 41.656793686008, 22.270416855442235, 22.32858449799093, 190.2759497187706, 36.29586409740582, 49.02275615409121, 38.900895249914555, 28.207557414800814, 23.916538102880214], \"Total\": [22391.0, 30729.0, 4025.0, 1310.0, 2435.0, 1515.0, 1418.0, 1093.0, 651.0, 3992.0, 1282.0, 1222.0, 2112.0, 1630.0, 7646.0, 1759.0, 1528.0, 4410.0, 1458.0, 1308.0, 753.0, 2058.0, 1720.0, 4874.0, 781.0, 4087.0, 2278.0, 1076.0, 1027.0, 205.0, 1458.003484325734, 1528.8782834086671, 1076.518863314457, 998.205090413666, 1027.682177395911, 747.9689350059123, 619.4203632618855, 721.2164973930275, 527.3789510435996, 556.8490324225766, 723.5802403984953, 795.611467678941, 448.61256162300964, 505.7971426220728, 407.6686958159415, 401.54069580800956, 666.3795900270187, 504.2228861760595, 408.4143968100312, 566.8332503876062, 475.7455435284318, 510.76458014003, 479.3718330629204, 362.4868434487319, 385.11999674164446, 562.842850273709, 395.072065895492, 325.8832688760849, 362.72008814460133, 368.6535423192856, 1759.737814185274, 559.9227039018608, 568.664318262866, 481.324510836538, 474.3488373990939, 523.079783733188, 2058.1124275681445, 3992.079799959596, 751.3055853780163, 2278.4734145524785, 4410.619224639381, 4874.213887037404, 1309.0587224868343, 7646.578834522908, 1613.528012482195, 3953.2732907058507, 751.0515243133564, 925.6123835822141, 30729.343983223735, 1556.272710017541, 726.5414237392336, 4087.644415464026, 22391.886505564806, 942.8377270835884, 1310.8015008264758, 1253.1800423172451, 978.3739159509025, 1469.6868838109153, 1386.1807878145644, 4025.784246439619, 1515.6313825468626, 2435.2821741783728, 1418.0869167345775, 1282.2992769494588, 781.5818794505087, 1222.3165943737683, 603.9921062701085, 488.33935000762824, 609.6872598688637, 447.69445769991955, 515.3950685917542, 425.1819322895662, 599.8924978051706, 341.1565086516282, 450.7856037338339, 344.87756590831407, 389.45550579076524, 282.8120942087364, 359.35622394467964, 339.01605392374756, 331.4686216267075, 313.5922692546097, 422.2189484585313, 298.4386720771916, 401.9433722777947, 257.18658505415965, 224.3814532178715, 329.07472224134665, 261.4235799413466, 281.22232588440386, 525.0199205580101, 22391.886505564806, 575.3703384580297, 1308.0169991855187, 2112.998482555503, 30729.343983223735, 753.4650557132946, 797.9551043152521, 1630.5495104987199, 1720.4416022279547, 4087.644415464026, 1163.920648305619, 781.142357418141, 765.2739468330835, 7646.578834522908, 1469.6868838109153, 3953.2732907058507, 1386.1807878145644, 4874.213887037404, 4410.619224639381, 127.01333399925736, 205.0985447549085, 122.04731580683115, 85.56963994798524, 69.90903662738376, 68.44466124170684, 58.597591030406875, 58.45752177851791, 58.45752177851791, 58.45752177851791, 58.45752177851791, 67.56578276767154, 61.9348260056196, 113.04605708218163, 69.25748454983533, 46.805593899874246, 73.14762328018398, 35.79736225457749, 39.18266767084871, 49.39558514759163, 49.59502874794738, 50.816589954046755, 54.61935015672831, 42.09626847067866, 73.19076880087582, 55.32135930240429, 43.835665457173626, 65.98610619398274, 37.412730967629905, 29.44428393029464, 38.570506815696156, 42.965453405817236, 59.103457831034405, 40.56123694668952, 1310.8015008264758, 1093.8080706640758, 30729.343983223735, 312.44961849794373, 240.21929963646, 1630.5495104987199, 1720.4416022279547, 753.4650557132946, 299.87215850968266, 92.61134120259956, 60.81369035417337, 60.81369035417337, 60.81369035417337, 60.81369035417337, 60.81369035417337, 52.78779895858741, 46.95414110062853, 46.95414110062853, 46.95414110062853, 46.95414110062853, 46.95414110062853, 47.32662113744761, 47.32662113744761, 45.293576665779746, 24.72279091356058, 24.72279091356058, 24.72279091356058, 24.72279091356058, 30.01246147765194, 22.99520774762768, 22.99520774762768, 24.25720186251703, 23.008492279313014, 19.28514433416512, 23.923095098738386, 22.932414186962472, 34.286038263171406, 34.286038263171406, 34.286038263171406, 34.286038263171406, 59.19398869944227, 25.025088317238673, 52.198956802685686, 25.290250690831755, 25.52668709854493, 651.3280169498784, 81.4257760280615, 505.1787840936163, 921.1969319832994, 264.60785164732874, 197.1299786233606], \"Category\": [\"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Default\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic1\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic2\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic3\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\", \"Topic4\"], \"logprob\": [30.0, 29.0, 28.0, 27.0, 26.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.0, 18.0, 17.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, -5.4934, -5.4461, -5.797, -5.8727, -5.8437, -6.162, -6.351, -6.1989, -6.5122, -6.4579, -6.196, -6.1012, -6.6746, -6.555, -6.7707, -6.7859, -6.2794, -6.5584, -6.7691, -6.4414, -6.6165, -6.5456, -6.6091, -6.8886, -6.8281, -6.4487, -6.8028, -6.9954, -6.8886, -6.8728, -5.3145, -6.455, -6.4397, -6.6063, -6.6207, -6.5254, -5.1959, -4.5614, -6.1789, -5.1425, -4.5387, -4.4862, -5.6896, -4.0988, -5.5334, -4.7476, -6.2215, -6.056, -3.3572, -5.6699, -6.2677, -5.1296, -4.0237, -6.1254, -5.9679, -6.0675, -6.1883, -6.1083, -6.1591, -4.0945, -5.0722, -4.5984, -5.1392, -5.2403, -5.7356, -5.2894, -5.9945, -6.2075, -5.9858, -6.2953, -6.1546, -6.347, -6.0029, -6.5675, -6.2892, -6.5572, -6.436, -6.7563, -6.5169, -6.5752, -6.5978, -6.6533, -6.356, -6.703, -6.4056, -6.8522, -6.9891, -6.6066, -6.837, -6.7644, -6.1508, -2.7103, -6.1126, -5.3689, -4.9545, -2.6079, -5.8754, -5.8751, -5.3153, -5.3713, -4.7979, -5.7142, -6.0305, -6.0574, -4.914, -5.8806, -5.6111, -5.9537, -5.6069, -5.9535, -5.7026, -5.2286, -5.7483, -6.1043, -6.3105, -6.3325, -6.4924, -6.4949, -6.4949, -6.4949, -6.4949, -6.3592, -6.447, -5.8462, -6.3382, -6.7323, -6.2918, -7.0076, -6.9176, -6.689, -6.6862, -6.6626, -6.5922, -6.854, -6.3009, -6.582, -6.8157, -6.4141, -6.9855, -7.228, -6.9626, -6.8625, -6.5852, -6.9196, -4.5323, -5.2099, -4.1147, -6.1852, -6.3786, -5.9667, -6.0948, -6.2271, -6.4847, -5.9052, -6.334, -6.334, -6.334, -6.334, -6.334, -6.4788, -6.5989, -6.5989, -6.5989, -6.5989, -6.5989, -6.6091, -6.6091, -6.6542, -7.28, -7.28, -7.28, -7.28, -7.0981, -7.3717, -7.3717, -7.3258, -7.3813, -7.5616, -7.3468, -7.3894, -6.9876, -6.9876, -6.9876, -6.9876, -6.4748, -7.3058, -6.6742, -7.3004, -7.2978, -5.1552, -6.812, -6.5114, -6.7427, -7.0641, -7.2291], \"loglift\": [30.0, 29.0, 28.0, 27.0, 26.0, 25.0, 24.0, 23.0, 22.0, 21.0, 20.0, 19.0, 18.0, 17.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.6304, 0.6302, 0.6301, 0.6299, 0.6298, 0.6292, 0.6289, 0.6288, 0.6285, 0.6284, 0.6284, 0.6283, 0.6279, 0.6275, 0.6275, 0.6274, 0.6273, 0.6272, 0.6272, 0.6272, 0.6272, 0.6271, 0.627, 0.627, 0.6269, 0.6269, 0.6267, 0.6266, 0.6264, 0.6259, 0.6212, 0.6259, 0.6256, 0.6258, 0.6259, 0.6235, 0.5832, 0.5552, 0.6079, 0.5349, 0.4781, 0.4307, 0.542, 0.3678, 0.489, 0.3787, 0.5656, 0.5221, -0.2816, 0.3886, 0.5526, -0.0367, -0.6315, 0.4344, 0.2623, 0.2077, 0.3344, 0.0075, 0.0152, 1.0136, 1.0128, 1.0124, 1.0124, 1.0119, 1.0117, 1.0108, 1.0105, 1.0101, 1.0098, 1.0092, 1.0091, 1.0091, 1.009, 1.0088, 1.0084, 1.0082, 1.0079, 1.0075, 1.0074, 1.0074, 1.0073, 1.0072, 1.0071, 1.0071, 1.0067, 1.0066, 1.0061, 1.0058, 1.0055, 1.0051, 0.9943, 0.6819, 0.941, 0.8634, 0.7983, 0.4677, 0.9086, 0.8515, 0.6966, 0.587, 0.295, 0.6348, 0.7174, 0.711, -0.4474, 0.2352, -0.4848, 0.2206, -0.69, -0.9366, 2.8617, 2.8565, 2.8559, 2.855, 2.8509, 2.8501, 2.8455, 2.8454, 2.8454, 2.8454, 2.8454, 2.8363, 2.8355, 2.8346, 2.8326, 2.8303, 2.8243, 2.8231, 2.8227, 2.8198, 2.8186, 2.8178, 2.816, 2.8147, 2.8146, 2.8135, 2.8124, 2.8051, 2.8011, 2.7981, 2.7935, 2.7857, 2.7441, 2.7862, 1.698, 1.2013, -1.0391, 1.479, 1.5485, 0.0452, -0.1366, 0.5568, 1.2205, 2.975, 2.9667, 2.9667, 2.9667, 2.9667, 2.9667, 2.9635, 2.9606, 2.9606, 2.9606, 2.9606, 2.9606, 2.9424, 2.9424, 2.9412, 2.9209, 2.9209, 2.9209, 2.9209, 2.9089, 2.9016, 2.9016, 2.8941, 2.8914, 2.8877, 2.8869, 2.8866, 2.8863, 2.8863, 2.8863, 2.8863, 2.853, 2.8829, 2.7793, 2.8778, 2.8711, 1.7744, 2.1969, 0.6723, -0.1597, 0.7663, 0.8956]}, \"token.table\": {\"Topic\": [1, 2, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 4, 1, 2, 4, 1, 2, 3, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 1, 2, 3, 1, 2, 4, 1, 2, 3, 1, 2, 4, 1, 2, 4, 1, 2, 1, 2, 1, 2, 3, 1, 2, 1, 2, 3, 1, 2, 4, 1, 2, 3, 4, 1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 1, 2, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 1, 2, 3, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 1, 2, 3, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 1, 2, 4, 1, 2, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 4, 1, 2, 1, 2, 3, 4, 1, 2, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 1, 2, 1, 2, 4, 1, 2, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 4, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 4, 1, 2, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 1, 2, 4, 1, 2, 1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 4, 1, 2, 4, 1, 2, 1, 2, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 1, 2, 3, 1, 2, 3, 4, 1, 2, 4, 1, 2, 1, 2, 3, 4, 1, 2, 4, 1, 2, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4, 1, 2, 3, 4, 1, 2, 4], \"Freq\": [0.5463412334213417, 0.35433000283485566, 0.09699536390451356, 0.018943771472353124, 0.018943771472353124, 0.9661323450900092, 0.5396121534618061, 0.45232195216651394, 0.00793547284502656, 0.0007214066222751419, 0.004736878833367736, 0.9923761155905406, 0.002368439416683868, 0.05833278212689608, 0.02916639106344804, 0.8749917319034412, 0.05185338427716213, 0.05185338427716213, 0.8815075327117562, 0.0465490258210382, 0.0465490258210382, 0.9077060035102448, 0.021297376047341093, 0.021297376047341093, 0.9583819221303491, 0.019678612848762503, 0.019678612848762503, 0.9445734167406001, 0.019678612848762503, 0.025521488439746647, 0.025521488439746647, 0.9442950722706259, 0.002047756339898432, 0.9952095811906378, 0.002047756339898432, 0.018308529799979954, 0.018308529799979954, 0.9337350197989777, 0.003188854120597236, 0.9917336315057405, 0.003188854120597236, 0.9942210323267593, 0.0030685834331072815, 0.023755074649823908, 0.023755074649823908, 0.9264479113431323, 0.028877745315177714, 0.014438872657588857, 0.9529655954008646, 0.014438872657588857, 0.004436698917254906, 0.9938205574650989, 0.002218349458627453, 0.006077647004844026, 0.9906564617895761, 0.003825209647210713, 0.9907292986275746, 0.003825209647210713, 0.003825209647210713, 0.0022336662489359643, 0.9939814807765041, 0.0022336662489359643, 0.0022336662489359643, 0.003280370333521772, 0.9955923962238579, 0.001640185166760886, 0.9965368585900044, 0.002448493510049151, 0.021297376047341093, 0.021297376047341093, 0.9583819221303491, 0.043606398866130706, 0.043606398866130706, 0.043606398866130706, 0.872127977322614, 0.04348732183570578, 0.04348732183570578, 0.9132337585498214, 0.9950482910172758, 0.0042163063178698125, 0.0021081531589349062, 0.0021081531589349062, 0.40774977983955013, 0.4050070683159657, 0.18650438360374041, 0.0009142371745281394, 0.9922004561061969, 0.005735262752058942, 0.0019117542506863138, 0.0019117542506863138, 0.74306968751657, 0.25654813145345123, 0.0010221041093762997, 0.994755220441123, 0.0025311837670257582, 0.0025311837670257582, 0.0025311837670257582, 0.017106438480043163, 0.017106438480043163, 0.9579605548824172, 0.4011475157663554, 0.5789580151698895, 0.019850732912912856, 3.254218510313583e-05, 0.1935637925803653, 0.805963664460543, 0.0004732611065534604, 0.0004732611065534604, 0.176741983195111, 0.6302685815825657, 0.19008100079474202, 0.003334754399907755, 0.017106438480043163, 0.017106438480043163, 0.9579605548824172, 0.02672886940184121, 0.02672886940184121, 0.9355104290644423, 0.02672886940184121, 0.008193543572746306, 0.008193543572746306, 0.9750316851568104, 0.008193543572746306, 0.027935019147175506, 0.027935019147175506, 0.9497906510039672, 0.01614600483271344, 0.01614600483271344, 0.9526142851300929, 0.03396244929465307, 0.03396244929465307, 0.9169861309556329, 0.015154705402077353, 0.04546411620623206, 0.9244370295267185, 0.002351934369871012, 0.9948682384554379, 0.002351934369871012, 0.0038882276841516244, 0.9914980594586643, 0.0038882276841516244, 0.00975140999849603, 0.00975140999849603, 0.9751409998496029, 0.004875704999248015, 0.254755100795893, 0.7437824802131349, 0.00128017638590901, 0.00128017638590901, 0.5354882109033319, 0.4586010853225485, 0.00476291928376534, 0.0006804170405379058, 0.6911801668130196, 0.0015257840326998225, 0.30668259057266434, 0.0027827540845763755, 0.9934432081937661, 0.9769659833297938, 0.0026620326521247786, 0.01996524489093584, 0.01644366579591029, 0.01644366579591029, 0.970176281958707, 0.000248398805992744, 0.9993083965088091, 0.000248398805992744, 0.02112975690987458, 0.04225951381974916, 0.9297093040344815, 0.05833278212689608, 0.02916639106344804, 0.8749917319034412, 0.003016876816551817, 0.9925524726455477, 0.9952578084290837, 0.0027569468377536947, 0.99633093036356, 0.0021019639881087763, 0.0021019639881087763, 0.002931205985054647, 0.9936788289335253, 0.013670984170867853, 0.027341968341735707, 0.9432979077898819, 0.9955914611633012, 0.001983249922636058, 0.001983249922636058, 0.9977909445314969, 0.0010017981370798162, 0.0010017981370798162, 0.0010017981370798162, 0.9959067354617416, 0.0024529722548318755, 0.019157470977438175, 0.1532597678195054, 0.019157470977438175, 0.8046137810524033, 0.9928020701968805, 0.002712573962286559, 0.002712573962286559, 0.002712573962286559, 0.7763187046074507, 0.22335921022104235, 0.00025295493796267536, 0.9235536723379337, 0.07432473667101107, 0.001376384012426131, 0.49175152920310916, 0.46135629119496996, 0.0043421768583056, 0.0423362243684796, 0.8881066776250075, 0.0037791773515957767, 0.10581696584468174, 0.654335348721118, 0.34472301298478414, 0.000797969937464778, 0.000797969937464778, 0.040448507755307464, 0.040448507755307464, 0.9303156783720716, 0.020244724240274674, 0.020244724240274674, 0.9515020392929097, 0.039174687891912224, 0.039174687891912224, 0.8618431336220689, 0.7031787180670972, 0.00460597413581068, 0.2917116952680097, 0.0034760220788578066, 0.9298359060944632, 0.06604441949829833, 0.0017380110394289033, 0.01644366579591029, 0.01644366579591029, 0.970176281958707, 0.02465408047871718, 0.04930816095743436, 0.9122009777125356, 0.02465408047871718, 0.8725207662535472, 0.005072795152636903, 0.005072795152636903, 0.12174708366328567, 0.0006597910359441113, 0.9989236284193844, 0.021364967660472026, 0.021364967660472026, 0.9614235447212411, 0.5280883044354535, 0.02456224671792807, 0.012281123358964035, 0.4421204409227053, 0.0012794564795988491, 0.9979760540871023, 0.0012794564795988491, 0.9944952306824342, 0.0025965932915990447, 0.0025965932915990447, 0.9964054470138427, 0.0022290949597625117, 0.0022290949597625117, 0.9893519284326175, 0.010228796503036828, 0.0005682664723909349, 0.02016331122786954, 0.02016331122786954, 0.9476756277098684, 0.02016331122786954, 0.9967176595800465, 0.0025137898097857417, 0.0012568949048928709, 0.0012568949048928709, 0.9961630394525535, 0.0024904075986313837, 0.9950522060343727, 0.002086063325019649, 0.002086063325019649, 0.002086063325019649, 0.9986258713732358, 0.0006858694171519476, 0.0006858694171519476, 0.0006858694171519476, 0.8209259958170724, 0.17500360375945342, 0.00424251160628978, 0.001060627901572445, 0.994928431066021, 0.003001292401405795, 0.0015006462007028975, 0.05833278212689608, 0.02916639106344804, 0.8749917319034412, 0.9973676246248159, 0.0013369539204086003, 0.0013369539204086003, 0.0013369539204086003, 0.04098877562226264, 0.013662925207420882, 0.9427418393120408, 0.013662925207420882, 0.01644366579591029, 0.01644366579591029, 0.970176281958707, 0.0028995797316252537, 0.994555847947462, 0.0028995797316252537, 0.001410350787669201, 0.9978231822759597, 0.0007051753938346005, 0.04348732183570578, 0.04348732183570578, 0.9132337585498214, 0.9076252489020952, 0.09216697401810445, 0.000438890352467164, 0.2981792577764163, 0.6521581427390626, 0.04882467378795121, 0.0005812461165232287, 0.007873189125213002, 0.007873189125213002, 0.9841486406516254, 0.14286518048885297, 0.8496718629073887, 0.006266016688107587, 0.0012532033376215174, 0.9958982140300984, 0.002758720814487807, 0.8574759704651725, 0.1421569099634223, 0.0002267255342319335, 0.0002267255342319335, 0.01644366579591029, 0.01644366579591029, 0.970176281958707, 0.9964469102914336, 0.0019770772029591935, 0.0019770772029591935, 0.817772894743183, 0.1819780626285006, 0.00020516128819447643, 0.00020516128819447643, 0.021297376047341093, 0.021297376047341093, 0.9583819221303491, 0.021297376047341093, 0.021297376047341093, 0.9583819221303491, 0.0012318900995578282, 0.9982416106750268, 0.00041063003318594275, 0.00041063003318594275, 0.0035359166756918302, 0.9935925858694042, 0.0033339306747749123, 0.9951783064203114, 0.02112975690987458, 0.04225951381974916, 0.9297093040344815, 0.9930929949302602, 0.004155200815607783, 0.036152401626058366, 0.018076200813029183, 0.9399624422775176, 0.022812474490138072, 0.022812474490138072, 0.935311454095661, 0.0015596982981679003, 0.9974270616783723, 0.0007798491490839501, 0.0033507721805616014, 0.991828565446234, 0.0033507721805616014, 0.040448507755307464, 0.040448507755307464, 0.9303156783720716, 0.008325725714073492, 0.7243381371243938, 0.262260359993315, 0.08459741922873706, 0.033838967691494824, 0.8798131599788654, 0.0029497128186882935, 0.994053219897955, 0.0029497128186882935, 0.9964340645937563, 0.0027640334662794902, 0.0013820167331397451, 0.995001615756188, 0.0035283745239581134, 0.03378721461321028, 0.10136164383963084, 0.8615739726368621, 0.9935562718722011, 0.0035170133517600038, 0.0017585066758800019, 0.0017585066758800019, 0.00245435594493994, 0.9964685136456158, 0.0008181186483133135, 0.004975825297643525, 0.9926771468798832, 0.021297376047341093, 0.021297376047341093, 0.9583819221303491, 0.0044566963341172985, 0.9938432825081576, 0.003555905445469678, 0.9920976192860401, 0.003555905445469678, 0.9949491225262495, 0.003553389723308034, 0.001776694861654017, 0.3144544265391336, 0.6838954194676239, 0.0008591650998336983, 0.0008591650998336983, 0.014800390952896262, 0.014800390952896262, 0.9620254119382571, 0.014800390952896262, 0.9969267239434492, 0.0013865462085444356, 0.0013865462085444356, 0.0013865462085444356, 0.041224870274309364, 0.041224870274309364, 0.906947146034806, 0.0025676874126341134, 0.993695028689402, 0.0025676874126341134, 0.040448507755307464, 0.040448507755307464, 0.9303156783720716, 0.9360210015454171, 0.06257892897956559, 0.9977069477432, 0.0016144125368012946, 0.9985890973523859, 0.000928920090560359, 0.000928920090560359, 0.8670441350738172, 0.13262862394981906, 0.0006197599249991545, 0.0006197599249991545, 0.2128116918656868, 0.7279754416270036, 0.05887585711557906, 0.0006132901782872818, 0.017065547958807555, 0.017065547958807555, 0.9727362336520307, 0.01644366579591029, 0.01644366579591029, 0.970176281958707, 0.006401031979538686, 0.745720225616257, 0.24643973121223942, 0.003200515989769343, 0.017106438480043163, 0.017106438480043163, 0.9579605548824172, 0.014610343332237121, 0.014610343332237121, 0.9642826599276499, 0.014304302394124174, 0.014304302394124174, 0.9726925628004438, 0.017106438480043163, 0.017106438480043163, 0.9579605548824172, 0.026537856139635864, 0.017691904093090575, 0.9553628210268911, 0.008845952046545287, 0.9983631346023987, 0.0009730634840179324, 0.0009730634840179324, 0.0009730634840179324, 0.9947801654023068, 0.0035719215992901505, 0.0017859607996450753, 0.0017859607996450753, 0.0019402591544625401, 0.9953529462392832, 0.0019402591544625401, 0.0019402591544625401, 0.0013272015635195109, 0.8998426600662284, 0.0982129157004438, 0.0013272015635195109, 0.7679251240422699, 0.23186840002161863, 0.00013077743938049555, 0.00013077743938049555, 0.05833278212689608, 0.02916639106344804, 0.8749917319034412, 0.5125201184511978, 0.4870775922846467, 0.00024463967467837605, 0.00024463967467837605, 0.2826916793467525, 0.7172687301719102, 4.465903307215679e-05, 4.465903307215679e-05, 0.26003759937669035, 0.7382977067730153, 0.952328927101386, 0.04713056424940532, 0.0004858821056639724, 0.926083692023746, 0.0736458224114096, 0.00025049599459663134, 0.00025049599459663134, 0.03331949299608851, 0.03331949299608851, 0.8996263108943897, 0.9981173887811069, 0.0013081486091495503, 0.8956232810884462, 0.10263475476888105, 0.001080365839672432, 0.001080365839672432, 0.040448507755307464, 0.040448507755307464, 0.9303156783720716, 0.9973852747803627, 0.0018961697239170392, 0.13914192255401, 0.8600805652376992, 0.0007645160579890659, 0.0007645160579890659, 0.022078185774088384, 0.022078185774088384, 0.022078185774088384, 0.9272838025117122, 0.7839243033351457, 0.21525790296497854, 0.0006425609043730703, 0.9966794726848455, 0.0017958188697024243, 0.9143974822810431, 0.08479375148972079, 0.0007639076710785656, 0.0007639076710785656, 0.994587369117741, 0.0019578491518065766, 0.0019578491518065766, 0.025926545502198403, 0.025926545502198403, 0.907429092576944, 0.0016556507769205757, 0.9967017677061866, 0.0016556507769205757, 0.0016556507769205757, 0.03954092872485922, 0.03954092872485922, 0.8699004319469028, 0.01168638784278939, 0.01168638784278939, 0.9699701909515194, 0.041800611328620944, 0.041800611328620944, 0.8778128379010398, 0.010797813604840984, 0.010797813604840984, 0.010797813604840984, 0.9718032244356887, 0.039959898935147585, 0.039959898935147585, 0.879117776573247, 0.0038093792667415896, 0.9809151611859592, 0.0019046896333707948, 0.015237517066966359, 0.043462213336729685, 0.043462213336729685, 0.9127064800713234], \"Term\": [\"$\", \"$\", \"$\", \"/j\", \"/j\", \"/j\", \"2\", \"2\", \"2\", \"2\", \"2_dose\", \"2_dose\", \"2_dose\", \"2_dose_authorize\", \"2_dose_authorize\", \"2_dose_authorize\", \"@coronavirus_vax\", \"@coronavirus_vax\", \"@coronavirus_vax\", \"@pmoindia\", \"@pmoindia\", \"@pmoindia\", \"account_42_percent\", \"account_42_percent\", \"account_42_percent\", \"active\", \"active\", \"active\", \"active\", \"active_case\", \"active_case\", \"active_case\", \"administer\", \"administer\", \"administer\", \"ale\", \"ale\", \"ale\", \"announce\", \"announce\", \"announce\", \"anti_vax\", \"anti_vax\", \"ap_news\", \"ap_news\", \"ap_news\", \"app\", \"app\", \"app\", \"app\", \"appointment\", \"appointment\", \"appointment\", \"approve\", \"approve\", \"arrive\", \"arrive\", \"arrive\", \"arrive\", \"astrazeneca\", \"astrazeneca\", \"astrazeneca\", \"astrazeneca\", \"available\", \"available\", \"available\", \"believe\", \"believe\", \"bill_de_blasio\", \"bill_de_blasio\", \"bill_de_blasio\", \"boost_immunity\", \"boost_immunity\", \"boost_immunity\", \"boost_immunity\", \"capitol_qanon_mitch_mcconnell\", \"capitol_qanon_mitch_mcconnell\", \"capitol_qanon_mitch_mcconnell\", \"care\", \"care\", \"care\", \"care\", \"case\", \"case\", \"case\", \"case\", \"child\", \"child\", \"child\", \"child\", \"come\", \"come\", \"come\", \"control\", \"control\", \"control\", \"control\", \"coronatrackernepal_bot_telegram\", \"coronatrackernepal_bot_telegram\", \"coronatrackernepal_bot_telegram\", \"coronavirus\", \"coronavirus\", \"coronavirus\", \"coronavirus\", \"coronavirus vaccine\", \"coronavirus vaccine\", \"coronavirus vaccine\", \"coronavirus vaccine\", \"coronavirus_19\", \"coronavirus_19\", \"coronavirus_19\", \"coronavirus_19\", \"coronavirus_19_sarscov2_staysafe_source\", \"coronavirus_19_sarscov2_staysafe_source\", \"coronavirus_19_sarscov2_staysafe_source\", \"coronaviruscases\", \"coronaviruscases\", \"coronaviruscases\", \"coronaviruscases\", \"coronaviruscoronavirus\", \"coronaviruscoronavirus\", \"coronaviruscoronavirus\", \"coronaviruscoronavirus\", \"coronavirusinfo_usa_new_case\", \"coronavirusinfo_usa_new_case\", \"coronavirusinfo_usa_new_case\", \"coronaviruspandemic\", \"coronaviruspandemic\", \"coronaviruspandemic\", \"coronavirusupdate\", \"coronavirusupdate\", \"coronavirusupdate\", \"coronavirus\\u30fc19\", \"coronavirus\\u30fc19\", \"coronavirus\\u30fc19\", \"county\", \"county\", \"county\", \"covax\", \"covax\", \"covax\", \"daily\", \"daily\", \"daily\", \"daily\", \"datum\", \"datum\", \"datum\", \"datum\", \"day\", \"day\", \"day\", \"day\", \"death\", \"death\", \"death\", \"deliver\", \"deliver\", \"die\", \"die\", \"die\", \"doctor_policy_vaccine\", \"doctor_policy_vaccine\", \"doctor_policy_vaccine\", \"dose\", \"dose\", \"dose\", \"dose_fig_variant\", \"dose_fig_variant\", \"dose_fig_variant\", \"dr_tam_cpho_naci\", \"dr_tam_cpho_naci\", \"dr_tam_cpho_naci\", \"eligible\", \"eligible\", \"family\", \"family\", \"fauci\", \"fauci\", \"fauci\", \"fda\", \"fda\", \"feb\", \"feb\", \"feb\", \"feel\", \"feel\", \"feel\", \"firefauci\", \"firefauci\", \"firefauci\", \"firefauci\", \"flu\", \"flu\", \"flu_viually_disappear\", \"flu_viually_disappear\", \"flu_viually_disappear\", \"flu_viually_disappear\", \"friend\", \"friend\", \"friend\", \"friend\", \"get\", \"get\", \"get\", \"good\", \"good\", \"good\", \"health\", \"health\", \"health\", \"health\", \"healthy\", \"healthy\", \"healthy\", \"help\", \"help\", \"help\", \"help\", \"help_restaurant_big\", \"help_restaurant_big\", \"help_restaurant_big\", \"icu\", \"icu\", \"icu\", \"immunesystem\", \"immunesystem\", \"immunesystem\", \"immunity\", \"immunity\", \"immunity\", \"india\", \"india\", \"india\", \"india\", \"insurance_pharmaceutical_biotech\", \"insurance_pharmaceutical_biotech\", \"insurance_pharmaceutical_biotech\", \"iran\", \"iran\", \"iran\", \"iran\", \"j\", \"j\", \"j\", \"j\", \"j&;j\", \"j&;j\", \"j&;k\", \"j&;k\", \"j&;k\", \"j.\", \"j.\", \"j.\", \"j.\", \"johnson_johnson\", \"johnson_johnson\", \"johnson_johnson\", \"kid\", \"kid\", \"kid\", \"kill\", \"kill\", \"kill\", \"know\", \"know\", \"know\", \"lakh\", \"lakh\", \"lakh\", \"lakh\", \"let\", \"let\", \"let\", \"let\", \"lie\", \"lie\", \"life\", \"life\", \"life\", \"life\", \"like\", \"like\", \"like\", \"like\", \"live\", \"live\", \"live\", \"live\", \"long\", \"long\", \"long\", \"look_modify_time\", \"look_modify_time\", \"look_modify_time\", \"mask\", \"mask\", \"mask\", \"mask\", \"maskup\", \"maskup\", \"maskup\", \"maskup\", \"medtech_retweet\", \"medtech_retweet\", \"medtech_retweet\", \"million_dose\", \"million_dose\", \"million_dose\", \"moderna\", \"moderna\", \"moderna\", \"nancy_blm_proud_boy\", \"nancy_blm_proud_boy\", \"nancy_blm_proud_boy\", \"need\", \"need\", \"need\", \"new\", \"new\", \"new\", \"new\", \"new_case\", \"new_case\", \"new_case\", \"news\", \"news\", \"news\", \"news\", \"not\", \"not\", \"pandemic\", \"pandemic\", \"pandemic\", \"pandemic\", \"patient_nhs_fmrevolution_today\", \"patient_nhs_fmrevolution_today\", \"patient_nhs_fmrevolution_today\", \"pay\", \"pay\", \"pay\", \"people\", \"people\", \"people\", \"people\", \"people_outside_city\", \"people_outside_city\", \"people_outside_city\", \"percent_queen_site_mayor\", \"percent_queen_site_mayor\", \"percent_queen_site_mayor\", \"pfizer\", \"pfizer\", \"pfizer\", \"pfizer\", \"pfizer_biontech\", \"pfizer_biontech\", \"pfizer_moderna\", \"pfizer_moderna\", \"pfizer_study_3rd\", \"pfizer_study_3rd\", \"pfizer_study_3rd\", \"point\", \"point\", \"protest\", \"protest\", \"protest\", \"punjab\", \"punjab\", \"punjab\", \"receive\", \"receive\", \"receive\", \"receive_dose\", \"receive_dose\", \"receive_dose\", \"recognize_privilege_little_girl\", \"recognize_privilege_little_girl\", \"recognize_privilege_little_girl\", \"repoed\", \"repoed\", \"repoed\", \"repoing\", \"repoing\", \"repoing\", \"resident\", \"resident\", \"resident\", \"rig\", \"rig\", \"rig\", \"risk\", \"risk\", \"sale\", \"sale\", \"sale\", \"school\", \"school\", \"school\", \"school\", \"shoot\", \"shoot\", \"shoot\", \"shot\", \"shot\", \"shot_javits_center_75\", \"shot_javits_center_75\", \"shot_javits_center_75\", \"single_dose\", \"single_dose\", \"site\", \"site\", \"site\", \"spread\", \"spread\", \"spread\", \"state\", \"state\", \"state\", \"state\", \"staysafe\", \"staysafe\", \"staysafe\", \"staysafe\", \"stop\", \"stop\", \"stop\", \"stop\", \"supplement\", \"supplement\", \"supplement\", \"supply\", \"supply\", \"supply\", \"teacher_good_work\", \"teacher_good_work\", \"teacher_good_work\", \"tell\", \"tell\", \"thing\", \"thing\", \"think\", \"think\", \"think\", \"time\", \"time\", \"time\", \"time\", \"today\", \"today\", \"today\", \"today\", \"today_recovery\", \"today_recovery\", \"today_recovery\", \"todaysmedicalupdate_medicine_health\", \"todaysmedicalupdate_medicine_health\", \"todaysmedicalupdate_medicine_health\", \"total\", \"total\", \"total\", \"total\", \"total_active_case\", \"total_active_case\", \"total_active_case\", \"total_case\", \"total_case\", \"total_case\", \"total_death\", \"total_death\", \"total_death\", \"total_recovery\", \"total_recovery\", \"total_recovery\", \"trend\", \"trend\", \"trend\", \"trend\", \"trump\", \"trump\", \"trump\", \"trump\", \"try\", \"try\", \"try\", \"try\", \"u.s\", \"u.s\", \"u.s\", \"u.s\", \"update\", \"update\", \"update\", \"update\", \"vaccinate\", \"vaccinate\", \"vaccinate\", \"vaccinate\", \"vaccinate_compromise_effectiveness\", \"vaccinate_compromise_effectiveness\", \"vaccinate_compromise_effectiveness\", \"vaccination\", \"vaccination\", \"vaccination\", \"vaccination\", \"vaccine\", \"vaccine\", \"vaccine\", \"vaccine\", \"variant\", \"variant\", \"vax\", \"vax\", \"vax\", \"virus\", \"virus\", \"virus\", \"virus\", \"vitamin\", \"vitamin\", \"vitamin\", \"want\", \"want\", \"way\", \"way\", \"way\", \"way\", \"way_philadelphia_phillies_pitch\", \"way_philadelphia_phillies_pitch\", \"way_philadelphia_phillies_pitch\", \"wear_mask\", \"wear_mask\", \"week\", \"week\", \"week\", \"week\", \"wellness\", \"wellness\", \"wellness\", \"wellness\", \"work\", \"work\", \"work\", \"wrong\", \"wrong\", \"year\", \"year\", \"year\", \"year\", \"yes\", \"yes\", \"yes\", \"zoom\", \"zoom\", \"zoom\", \"|\", \"|\", \"|\", \"|\", \"\\u00b0\", \"\\u00b0\", \"\\u00b0\", \"\\u2591_\\u2591_\\u2591_\\u2591\", \"\\u2591_\\u2591_\\u2591_\\u2591\", \"\\u2591_\\u2591_\\u2591_\\u2591\", \"\\u274c\", \"\\u274c\", \"\\u274c\", \"\\ufe0f\", \"\\ufe0f\", \"\\ufe0f\", \"\\ufe0f\", \"\\ud83c\\udde8_\\ud83c\\uddf3\", \"\\ud83c\\udde8_\\ud83c\\uddf3\", \"\\ud83c\\udde8_\\ud83c\\uddf3\", \"\\ud83d\\udc89\", \"\\ud83d\\udc89\", \"\\ud83d\\udc89\", \"\\ud83d\\udc89\", \"\\ud83d\\ude0e\", \"\\ud83d\\ude0e\", \"\\ud83d\\ude0e\"]}, \"R\": 30, \"lambda.step\": 0.01, \"plot.opts\": {\"xlab\": \"PC1\", \"ylab\": \"PC2\"}, \"topic.order\": [3, 4, 2, 1]};\n",
+       "\n",
+       "function LDAvis_load_lib(url, callback){\n",
+       "  var s = document.createElement('script');\n",
+       "  s.src = url;\n",
+       "  s.async = true;\n",
+       "  s.onreadystatechange = s.onload = callback;\n",
+       "  s.onerror = function(){console.warn(\"failed to load library \" + url);};\n",
+       "  document.getElementsByTagName(\"head\")[0].appendChild(s);\n",
+       "}\n",
+       "\n",
+       "if(typeof(LDAvis) !== \"undefined\"){\n",
+       "   // already loaded: just create the visualization\n",
+       "   !function(LDAvis){\n",
+       "       new LDAvis(\"#\" + \"ldavis_el970818844640794728989098904\", ldavis_el970818844640794728989098904_data);\n",
+       "   }(LDAvis);\n",
+       "}else if(typeof define === \"function\" && define.amd){\n",
+       "   // require.js is available: use it to load d3/LDAvis\n",
+       "   require.config({paths: {d3: \"https://d3js.org/d3.v5\"}});\n",
+       "   require([\"d3\"], function(d3){\n",
+       "      window.d3 = d3;\n",
+       "      LDAvis_load_lib(\"https://cdn.jsdelivr.net/gh/bmabey/pyLDAvis@3.2.2/pyLDAvis/js/ldavis.v3.0.0.js\", function(){\n",
+       "        new LDAvis(\"#\" + \"ldavis_el970818844640794728989098904\", ldavis_el970818844640794728989098904_data);\n",
+       "      });\n",
+       "    });\n",
+       "}else{\n",
+       "    // require.js not available: dynamically load d3 & LDAvis\n",
+       "    LDAvis_load_lib(\"https://d3js.org/d3.v5.js\", function(){\n",
+       "         LDAvis_load_lib(\"https://cdn.jsdelivr.net/gh/bmabey/pyLDAvis@3.2.2/pyLDAvis/js/ldavis.v3.0.0.js\", function(){\n",
+       "                 new LDAvis(\"#\" + \"ldavis_el970818844640794728989098904\", ldavis_el970818844640794728989098904_data);\n",
+       "            })\n",
+       "         });\n",
+       "}\n",
+       "</script>"
+      ],
+      "text/plain": [
+       "PreparedData(topic_coordinates=              x         y  topics  cluster       Freq\n",
+       "topic                                                \n",
+       "2      0.168998  0.122730       1        1  53.160989\n",
+       "3      0.152595 -0.127372       2        1  36.269410\n",
+       "1     -0.149185 -0.021719       3        1   5.615408\n",
+       "0     -0.172407  0.026362       4        1   4.954193, topic_info=             Term          Freq         Total Category  logprob  loglift\n",
+       "23        vaccine  22391.000000  22391.000000  Default  30.0000  30.0000\n",
+       "6     coronavirus  30729.000000  30729.000000  Default  29.0000  29.0000\n",
+       "37           dose   4025.000000   4025.000000  Default  28.0000  28.0000\n",
+       "992         death   1310.000000   1310.000000  Default  27.0000  27.0000\n",
+       "1122       pfizer   2435.000000   2435.000000  Default  26.0000  26.0000\n",
+       "...           ...           ...           ...      ...      ...      ...\n",
+       "1576           j.     36.295864     81.425776   Topic4  -6.8120   2.1969\n",
+       "24              $     49.022756    505.178784   Topic4  -6.5114   0.6723\n",
+       "173        health     38.900895    921.196932   Topic4  -6.7427  -0.1597\n",
+       "174       healthy     28.207557    264.607852   Topic4  -7.0641   0.7663\n",
+       "1666            j     23.916538    197.129979   Topic4  -7.2291   0.8956\n",
+       "\n",
+       "[225 rows x 6 columns], token_table=      Topic      Freq Term\n",
+       "term                      \n",
+       "24        1  0.546341    $\n",
+       "24        2  0.354330    $\n",
+       "24        4  0.096995    $\n",
+       "8421      1  0.018944   /j\n",
+       "8421      2  0.018944   /j\n",
+       "...     ...       ...  ...\n",
+       "1764      3  0.001905    💉\n",
+       "1764      4  0.015238    💉\n",
+       "6203      1  0.043462    😎\n",
+       "6203      2  0.043462    😎\n",
+       "6203      4  0.912706    😎\n",
+       "\n",
+       "[582 rows x 3 columns], R=30, lambda_step=0.01, plot_opts={'xlab': 'PC1', 'ylab': 'PC2'}, topic_order=[3, 4, 2, 1])"
+      ]
+     },
+     "execution_count": 49,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "#display the pLDAvis plot to visualize the LDA model\n",
+    "vis = pyLDAvis.gensim.prepare(models[idx], corpus, tweets_gdict)\n",
+    "vis"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 50,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "pyLDAvis.save_html(vis,data_path+'\\\\'+'covid_topics_4t.html')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Wrangle Topic data"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### create a topic & topic map"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 51,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# # to be used if no topic names are given\n",
+    "# TOPICS = [x for x,y in models[idx].print_topics()]\n",
+    "# TOPIC_MAP = {x:x for x in TOPICS}\n",
+    "\n",
+    "# give topic names and create a topic map\n",
+    "TOPICS = ['Other', 'Covid Updates', 'Opinion','Vaccine Updates']\n",
+    "TOPIC_MAP = {0.0:'Other', 1.0:'Covid Updates',2.0:'Opinion',3.0:'Vaccine Updates'}\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Find the distribution of topics for each tweet"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 52,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# create a list of the index of the dataset\n",
+    "key=full_data.index.tolist()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 53,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "application/vnd.jupyter.widget-view+json": {
+       "model_id": "fac1d580f5464fbb80fbfec9b07ad6ee",
+       "version_major": 2,
+       "version_minor": 0
+      },
+      "text/plain": [
+       "  0%|          | 0/46324 [00:00<?, ?it/s]"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# create a dataframe that will show the topic distrubtion of each tweet\n",
+    "tweet_topic = {}\n",
+    "\n",
+    "\n",
+    "for tweet in tqdm(range(len(corpus))): # for each tweet/document in corpus\n",
+    "    re_bow = corpus[tweet]        #obtain the bow for the tweet\n",
+    "    res_topics = models[idx].get_document_topics(re_bow, 0) #obtain the topics mentioned in the tweet\n",
+    "    tmp = []\n",
+    "    for topic_id, topic_prob in res_topics: #obtain the topic id and topic probability for each topic in the tweet\n",
+    "        tmp.append(topic_prob)\n",
+    "    tweet_topic[key[tweet]]=tmp #assign the topic"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 54,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "topics_df = pd.DataFrame.from_dict(tweet_topic, orient='index') # create df from the dictionary\n",
+    "topic_cols = cols=[x.lower().replace(' ','_').replace('/','_') for x in TOPICS]\n",
+    "topics_df.columns = topic_cols\n",
+    "\n",
+    "# if the topic names are generic 'topic_0' etc\n",
+    "# topics_df = pd.DataFrame.from_dict(tweet_topic, orient='index') # create df from the dictionary\n",
+    "# topic_cols = ['topic_'+str(x).lower() for x in TOPICS]\n",
+    "# topics_df.columns = topic_cols"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 55,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>other</th>\n",
+       "      <th>covid_updates</th>\n",
+       "      <th>opinion</th>\n",
+       "      <th>vaccine_updates</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0.009347</td>\n",
+       "      <td>0.009342</td>\n",
+       "      <td>0.971633</td>\n",
+       "      <td>0.009679</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>0.017380</td>\n",
+       "      <td>0.017220</td>\n",
+       "      <td>0.464710</td>\n",
+       "      <td>0.500691</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>0.019351</td>\n",
+       "      <td>0.019368</td>\n",
+       "      <td>0.510466</td>\n",
+       "      <td>0.450815</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>0.017147</td>\n",
+       "      <td>0.183378</td>\n",
+       "      <td>0.590712</td>\n",
+       "      <td>0.208763</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>0.012068</td>\n",
+       "      <td>0.012074</td>\n",
+       "      <td>0.963291</td>\n",
+       "      <td>0.012566</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "      other  covid_updates   opinion  vaccine_updates\n",
+       "0  0.009347       0.009342  0.971633         0.009679\n",
+       "1  0.017380       0.017220  0.464710         0.500691\n",
+       "2  0.019351       0.019368  0.510466         0.450815\n",
+       "3  0.017147       0.183378  0.590712         0.208763\n",
+       "4  0.012068       0.012074  0.963291         0.012566"
+      ]
+     },
+     "execution_count": 55,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "topics_df.head()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Find dominant topics per tweet"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 56,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "tweet_ids = full_data.tweet_id.tolist()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 57,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def format_topics_sentences(lda_model, corpus=corpus, texts=texts, tweet_ids=tweet_ids):\n",
+    "    ''' Model that creates a df that displays the dominant topic for each response/text'''\n",
+    "    \n",
+    "    sent_topics_df = pd.DataFrame()\n",
+    "    \n",
+    "    for i, row in tqdm(enumerate(lda_model[corpus])):\n",
+    "        \n",
+    "        row = sorted(row[0], key=lambda x: (x[1]), reverse=True)\n",
+    "        \n",
+    "        for j, (topic_num, prop_topic) in enumerate(row):\n",
+    "            if j == 0:\n",
+    "                wp = lda_model.show_topic(topic_num)\n",
+    "                topic_keywords = ', '.join([word for word,prop in wp])\n",
+    "                sent_topics_df = sent_topics_df.append(pd.Series([int(topic_num), round(prop_topic,4), topic_keywords]), ignore_index=True)\n",
+    "            else:\n",
+    "                break\n",
+    "    sent_topics_df.columns = ['dominant_topic','perc_contribution','topic_keywords']\n",
+    "    \n",
+    "    #add tweet, tweet_ids & topics\n",
+    "    contents = pd.Series(texts)\n",
+    "    tweet_ids = pd.Series(tweet_ids)\n",
+    "    \n",
+    "    sent_topics_df = pd.concat([sent_topics_df, contents, tweet_ids],axis=1)\n",
+    "    return(sent_topics_df)\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 58,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "application/vnd.jupyter.widget-view+json": {
+       "model_id": "5c4a46a3e4ca4264988c9e21af1fb23d",
+       "version_major": 2,
+       "version_minor": 0
+      },
+      "text/plain": [
+       "0it [00:00, ?it/s]"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#create df to display the dominant topic for each response\n",
+    "df_topic_sents_keywords = format_topics_sentences(models[idx], corpus, tweets, tweet_ids)\n",
+    "\n",
+    "#adjust col labels\n",
+    "df_dominant_topic = df_topic_sents_keywords.reset_index()\n",
+    "df_dominant_topic.columns=['document_no','dominant_topic','topic_perc_contrib', 'keywords','text','tweet_id']\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 59,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>document_no</th>\n",
+       "      <th>dominant_topic</th>\n",
+       "      <th>topic_perc_contrib</th>\n",
+       "      <th>keywords</th>\n",
+       "      <th>text</th>\n",
+       "      <th>tweet_id</th>\n",
+       "      <th>processed_text</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>0.9716</td>\n",
+       "      <td>coronavirus, vaccine, vaccinate, people, pande...</td>\n",
+       "      <td>Here’s what's in the COVID relief package:\\n \\...</td>\n",
+       "      <td>1.364223e+18</td>\n",
+       "      <td>[coronavirus, relief_package, direct, check, f...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>1</td>\n",
+       "      <td>3.0</td>\n",
+       "      <td>0.5012</td>\n",
+       "      <td>coronavirus, vaccine, dose, pfizer, vaccinatio...</td>\n",
+       "      <td>Will the National Endowment for the Arts be he...</td>\n",
+       "      <td>1.364381e+18</td>\n",
+       "      <td>[national, endowment, help, vaccine, distribut...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>0.5104</td>\n",
+       "      <td>coronavirus, vaccine, vaccinate, people, pande...</td>\n",
+       "      <td>This is both anecdotal and early, but many lon...</td>\n",
+       "      <td>1.364610e+18</td>\n",
+       "      <td>[anecdotal, early, long, coronavirus, survivor...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>3</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>0.5907</td>\n",
+       "      <td>coronavirus, vaccine, vaccinate, people, pande...</td>\n",
+       "      <td>A Link to Professor Chossudovsky’s Analysis of...</td>\n",
+       "      <td>1.364727e+18</td>\n",
+       "      <td>[link, professor, chossudovsky, analysis, coro...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>4</td>\n",
+       "      <td>2.0</td>\n",
+       "      <td>0.9633</td>\n",
+       "      <td>coronavirus, vaccine, vaccinate, people, pande...</td>\n",
+       "      <td>Children warned over hugging grandparents even...</td>\n",
+       "      <td>1.364727e+18</td>\n",
+       "      <td>[child, warn, hug, grandparent, vaccine, small...</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   document_no  dominant_topic  topic_perc_contrib  \\\n",
+       "0            0             2.0              0.9716   \n",
+       "1            1             3.0              0.5012   \n",
+       "2            2             2.0              0.5104   \n",
+       "3            3             2.0              0.5907   \n",
+       "4            4             2.0              0.9633   \n",
+       "\n",
+       "                                            keywords  \\\n",
+       "0  coronavirus, vaccine, vaccinate, people, pande...   \n",
+       "1  coronavirus, vaccine, dose, pfizer, vaccinatio...   \n",
+       "2  coronavirus, vaccine, vaccinate, people, pande...   \n",
+       "3  coronavirus, vaccine, vaccinate, people, pande...   \n",
+       "4  coronavirus, vaccine, vaccinate, people, pande...   \n",
+       "\n",
+       "                                                text      tweet_id  \\\n",
+       "0  Here’s what's in the COVID relief package:\\n \\...  1.364223e+18   \n",
+       "1  Will the National Endowment for the Arts be he...  1.364381e+18   \n",
+       "2  This is both anecdotal and early, but many lon...  1.364610e+18   \n",
+       "3  A Link to Professor Chossudovsky’s Analysis of...  1.364727e+18   \n",
+       "4  Children warned over hugging grandparents even...  1.364727e+18   \n",
+       "\n",
+       "                                      processed_text  \n",
+       "0  [coronavirus, relief_package, direct, check, f...  \n",
+       "1  [national, endowment, help, vaccine, distribut...  \n",
+       "2  [anecdotal, early, long, coronavirus, survivor...  \n",
+       "3  [link, professor, chossudovsky, analysis, coro...  \n",
+       "4  [child, warn, hug, grandparent, vaccine, small...  "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "df_dominant_topic['processed_text'] = all_tokens\n",
+    "display(df_dominant_topic.head())"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 60,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Whites in Connecticut are getting COVID vaccine at higher rates than Blacks. Check your community here.\n",
+      "https://t.co/Q53CrTEl5U https://t.co/Bnyb89MHcL \n",
+      "\n",
+      "Whites in Connecticut are getting COVID vaccine at higher rates than Blacks. Check your community here.\n",
+      "https://t.co/Q53CrTEl5U https://t.co/Bnyb89MHcL \n",
+      "\n",
+      "['white', 'connecticut', 'get', 'coronavirus', 'vaccine', 'high_rate', 'black', 'check', 'community']\n"
+     ]
+    }
+   ],
+   "source": [
+    "# doucle check that the dataframes have the same indicies\n",
+    "print(full_data.iloc[500].full_text,'\\n')\n",
+    "print(df_dominant_topic.iloc[500].text,'\\n')\n",
+    "print(df_dominant_topic.iloc[500].processed_text)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 61,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "image/png": "iVBORw0KGgoAAAANSUhEUgAAA9sAAAJzCAYAAAAfsQDrAAAAOXRFWHRTb2Z0d2FyZQBNYXRwbG90bGliIHZlcnNpb24zLjMuNCwgaHR0cHM6Ly9tYXRwbG90bGliLm9yZy8QVMy6AAAACXBIWXMAAAsTAAALEwEAmpwYAABo10lEQVR4nO3deXgNd//G8TsJsSRBYolSaxBFtgpK7Km9dkpLELuqpWJtVbX2WGsrKqiWNpbSKm3V+pSWEuXpgrZiF1ohZLElmd8ffpmnpwkShoi+X9fV63JmPuc7nznN5OQ+8505doZhGAIAAAAAAJaxz+wGAAAAAAB40hC2AQAAAACwGGEbAAAAAACLEbYBAAAAALAYYRsAAAAAAIsRtgEAAAAAsFi2zG4AAPDvFBcXp1WrVumLL77QyZMnlZSUpDJlyqh9+/Zq37697O0fj8+Do6OjlStXLuXOnduS8ZYtW6bFixfr6tWr6tKli4YOHZqqZs6cOZo7d26q5dmzZ1e+fPlUuXJlDRkyRCVKlLCkJ2S+kSNHat26dfesa926tSZPnmzZdoOCgnT27Flt27bNsjEBALcRtgEAj1xkZKT69euns2fPqnnz5mrbtq1u3LihrVu3asyYMdq3b5+mTp0qOzu7TO1z586dGjp0qNatW2dJ2D569KgmTZokX19fDRo0SOXLl79rfd++fVW6dGnz8fXr13Xw4EGtW7dOBw4c0IYNG5QvX74H7guZr0OHDqpevbr5OCIiQuHh4erQoYMqV65sLi9evLil2+3bt6+uXbtm6ZgAgNsI2wCAR+rGjRt65ZVXFBMTozVr1tgEzu7du+vtt9/WypUr5e3trS5dumRip9J///tfXb161bLxfvvtN0lSnz59VL9+/XvW16hRQ9WqVbNZ1qFDB5UuXVrTpk3T6tWr1atXL8v6Q+bx8/OTn5+f+TgpKUnh4eHy9fVVy5YtH9p2AwICHtrYAPBv93jM0QMA/GusXLlSx48f16hRo9I8sztixAjlzZtXn3zySSZ093DdunVLkuTk5PRA47Ru3VqSdOjQoQfuCQAAPByEbQDAI7Vx40blzp1bzZo1S3N9zpw5tWrVKq1fv95m+f79+9WtWzfzDGCXLl20b98+m5r69esrKCgo1Zj/XF6/fn2NGTNGn332mZo1ayYvLy81bNhQK1asMGtGjhxpXjcdGBiY5rh/d/ToUb3yyivy9/eXt7e3XnzxRW3ZssVcHxQUpFGjRkmSunTpIk9Pz7uOdze5cuWSJBmGYbP8xx9/VHBwsPkade/eXf/9739taq5cuaKRI0eqbt26qlSpkp5//nlNnz5dN27csOm1W7du2rZtm5o2bSpvb2+1atVKX3/9dYb3O2W8Hj166D//+Y/atGkjLy8v1a1bV3PmzFFycrJZd/PmTU2YMEGBgYGqVKmS6tSpo7fffltXrlyxGe/8+fMaPny4nnvuOXl5ealVq1b6/PPPbWoMw9DcuXPVqFEjeXl5qUaNGho2bJiioqLu+trOmTNHFSpUUGRkpIKCguTj46P69etr/vz5SkpKSvVajhs3TrVq1VKlSpXUpEkTffDBBzb/X+bMmSMvLy998803CggIkJ+fn1avXn3XHu4lvcfCG2+8odWrVyswMFC+vr7q2LGj9uzZY1MXFBSUapbFsWPHNGjQIFWrVk2VK1dWUFCQ9u/f/0A9A8C/EWEbAPDIGIahw4cPq1KlSsqePfsd60qWLClHR0fz8datWxUUFKSoqCj169dP/fr1U1RUlLp166atW7feVy/ffvutJkyYoEaNGmnUqFHKlSuX3nnnHe3cuVPS7enaDRo0kCSNGjVKffv2veNY//3vf9WhQwf997//VXBwsIYMGaJbt26pf//+ZoDv27evOnToYP47NDT0vvpO6V2SnnnmGXPZ7t27FRQUpNjYWA0aNEj9+vXTuXPn1KlTJ5ugNHjwYG3fvl3t27fXW2+9papVq2rRokUaP368zTaOHTumgQMHqkqVKho6dKjs7e01cOBAbdiwIUP7neK3337T4MGDVa1aNY0ePVrFihXT3Llz9fHHH5s177zzjlavXq1mzZrprbfeUqNGjbRq1Sq99tprZs2FCxfUvn17fffddwoKCtKIESPk6uqqYcOGafHixWbdggULNG/ePNWqVUtjxoxR+/bttWXLFnXv3j1VaP4nwzAUHBysHDlyaNiwYapYsaLeffddvf3222ZNQkKCOnfurM8++0ytW7fW66+/rrJly2rixIl65513bMZLTEzU6NGj1bVrV/Xo0cPmGuyMysix8N133+mdd95Ro0aNNGjQIF26dEk9e/bUDz/8cMfxT5w4oRdffFF79uxR586dNWTIEMXExCg4ODjVBzcAgHswAAB4RKKjo41y5coZ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wsIUGBio0NBQrVu37qG8HnjyZfS9LcVbb72lQoUKac6cOapXr54mTpyo5cuX33VbISEhqlq1qhYuXKgXXnhB77//vj799NM0a//880+1a9dOhw4d0vDhwzVz5kzlzJlTwcHB+v77721qR48erWLFimn+/PlmSFm4cGH6XwT867Rt21YJCQnaunWrzfJvvvlGCQkJatu2ra5du6bOnTvrxIkTGjt2rMLCwhQUFKQNGzZo5syZ5nNCQ0MVGhqqhg0basGCBWrevLkmTJigFStWSJK2b9+uPn36qFChQnr33Xc1ePBgff7553r99dfv2N+hQ4e0dOlSDRo0SPPmzZODg4MGDhxoflB96dIlvfTSSzpy5IjGjh2radOmKT4+Xi+//LLOnj1r6Wv1888/a968eQoJCdGECRN07NgxdenSRQkJCZKkX375Rd27d5eLi4tmz56tLl26aMiQITZjXLhwQZ06ddKNGzc0ZcoUvf/++2ratKmWL19u/t6YO3euChcurDp16ig8PFyFChVK135GRERo+PDhatiwoRYvXqyRI0dqz549Gjp0qKWvw+OKaeR4YqQc1EWLFr1rXfHixbV7925zOlzhwoVTTY2bPHmyatSoYdY3aNBAP/zwg8qWLavPPvtMR48e1erVq+Xl5SVJql27ttq1a6eZM2fanMF+9tln1aNHD4v2ELB1+fJl3bhxQ0WKFElX/e+//67169dr+PDh5s9lQECAcubMqWnTpqlbt24qV66cnn32WW3cuFGtW7eWdPv65d9//13Dhw9PNaZhGOaHSm+88YYkqWbNmoqLi9Mnn3xi0Z7+T6FChTRv3jzZ29urTp06io+P14cffqj+/ftLkj788EN1797dvHFOrVq1dOHCBZszDmfOnFHPnj3Vt29fc1nRokXVpk0bHThwQE2aNJGHh4ckqUyZMipTpowMw9C0adNUr149m5vDFC5cWP3791dERIQqV66sH374QQEBAWratKmk29N8c+fOLVdXV8tfC/w7ZPS9LYWPj48mTpwo6fZ71J9//qkFCxaoc+fOsrdP+1xLhw4d9Morr0iSnnvuOW3ZskU7duxQ+/btU9UuXbpUV69e1erVq/XUU09Jun1ta8uWLTVt2jStXbvWrK1Xr55GjBghSapevbp2796tHTt2aPDgwel8FfBv4+3trXLlyumLL77QCy+8YC5fv369qlatqhIlSuiXX35R0aJFFRoaqqefflrS7Z/bQ4cOad++fZKkq1evavny5erWrZsZMGvUqKHz589r37596tSpk+bMmaNKlSpp9uzZ5nYMw9CSJUsUFxeXZn+xsbFat26dihUrJun2DJPOnTtr7969ev755/XBBx/oypUrWrVqlXnZVc2aNdWgQQO99957Gj9+vGWvVWxsrMLCwuTj4yNJ8vDwUMuWLbVu3Tp16tRJCxcuVMGCBfXee+8pe/bskiRXV1ebGXFHjx5VhQoV9O6775ofqteoUUO7d+/Wvn371KtXL1WoUEGOjo5yc3Mz/25Oz35GREQoZ86c6t27txwdHSVJ+fLl008//STDMGRnZ2fZa/E44sw2nhgpX0WQ8ovkThwcHO75tQX+/v7mv1N+gad8Wvn999/L3d1dzzzzjBITE5WYmKjk5GTVq1dP+/bts5lSWq5cufvaFyA9HBwcJMlmmufdpPzx8fc/XCSpRYsWNutbtmyp77//XpcvX5Ykbdq0SQUKFFBAQECqMSMjIxUdHa3AwECb5U2aNMnAntzZP9+EmzZtahMUGjZsqFu3bungwYM6ePCgbt26dc9eXn/9dQ0ZMkRXr17VwYMH9dlnn5lnOG7dupVmH5GRkTp//rzq169vHveJiYmqVauWsmfPbk7Jq1atmlatWqVevXrpo48+0unTp9W/f/+7npUE7uZ+39v+eZw3bNhQ0dHROn78+B3HePbZZ20eFy5c+I7Tvffv36/KlSubQVuS7O3t1bRpU/3yyy82ISUj4wIp2rRpo127dpk35Dp//rz27t1r3qSvYsWKWrlypYoUKaITJ05o586dCgsLU2RkpPm7/ODBg0pMTFSDBg1sxh4/frxmzZql69ev69dff021vl27dtq0aZOcnZ3T7K1gwYJm0JZkBs2Un+vvv/9eFStWVIECBcz3i2zZsikgIOCuNzO8n+BZrFgxM2hLty/3KFGihPltGhEREeZ7VYqGDRuaf0NItz+Q++ijj+To6Kg//vhDW7du1XvvvadLly7d8X0xvftZpUoVXbt2Tc2bN9f06dO1f/9+1axZU6+++uoTH7QlzmzjCZLyqf+9puecPn36rmcCHRwczE/eJJl/2KfclTgmJkbnz59XxYoV03z+5cuX5e7uLknKnz9/+ncAyKC8efPKycnprtdHp/zB6+zsbF7D9s+fy5THKR8oNWnSRBMmTNDXX3+tjh07atOmTWrWrJnNG3OKlDH/efOYggUL3rP/3Llzp7o2PEVycrKSkpKUK1cum+X/vPlTSu9Xr141g8a9ejl16pTGjBmj77//XtmzZ1fp0qVVvnx5SXf+/tCUP/befPPNNKfI//nnn5JuT9MvXLiwPv/8c40bN07jxo2Tn5+fxo4da24DyIj7fW9LeR9K8fdj5U5y5sxp89je3v6Od+S/cuWKSpYsmWp5gQIFZBiGeb1rRscFUrRs2VLTp0/XV199pY4dO+rzzz9X7ty51ahRI7Nm6dKl5h2yCxQooEqVKilXrlzmFOqU3913+nvsypUrMgwjwzdA++d7U0po/PvfiidPnkzzb8W7fXCWMu7fT9z83a1bt5Q7d26bZWndFDF//vzmsX7lypVU+5ctWzabGVfJycmaMWOGVqxYoYSEBD311FPy9vZWjhw57nqCKj376efnp0WLFmnZsmVaunSpFi1apAIFCqhv374290R5UhG28cTInz+/fH19tXnzZg0aNCjNaXJnzpzRr7/++kBTu11cXOTh4XHH7xlkuigepZo1a2rv3r26ceNGmtdtL1u2TPPnz9eXX36pPHnySJKio6Nt/hD/66+/JP3vZzdv3ryqW7euvvrqK1WoUEGnTp0yz37/U8pzLl68aLM8PV8NUqBAAR07dizNdSk3oilQoMBdx03Zbv78+c0z/BcvXlTx4sXTfE5ycrJ69+6tHDlyaM2aNXrmmWeULVs2/fHHH/rss8/u2KuLi4skadSoUapcuXKq9Smvg6Ojo/r166d+/frp3Llz2r59u+bPn69hw4Zpw4YNdxwfuJP7fW9LmZmS4u/HihXy5MmT6riX/vfBk6urq/lv4H64ubmpbt262rhxoxm2mzVrZgbSDRs2aPLkyRo+fLhat25tBspBgwbp119/lfS/392XLl2yeV84ffq0oqKizJt9/vN4iYuL048//njfd+B3dnbWc889l+HrklPe8/7880+bflOcP3/+nu+L0u33eW9vb0m3p2xHR0fbrDcMw+Ymcilh+J133lGDBg3M1+1eX6+W3v2sVauWatWqpWvXrmnPnj1avny5xo8fLz8/P1WqVOmuz83qmEaOJ0r//v0VGRmpd999N9W6Gzdu6I033pCTk5NefvllSbrjdWt3U6VKFZ07d06FChWSl5eX+d/WrVv14Ycf3nOqH2Cl4OBgxcTEpPkzf+7cOa1YsULe3t4qUaKEqlatKun2XUH/LuXx30Nky5YttX//fq1Zs0YeHh53fDMsWbKknnrqKX311Vc2y7dv337P3qtWrarTp0/rp59+SrVu8+bNsre3V5UqVWyW79ixw+bx119/rVy5csnHx0d+fn7KmTPnXXu5fPmyjh8/rhdffFFeXl7mjeP+85//SPrfme1/nsX38PCQm5ubzp49a3Pcu7q6atq0aTp27Jhu3rypxo0ba8mSJZKkIkWKqFOnTmrWrJmioqLu+XoAd5LR9zYp7WOlaNGiaf4Bfz+qVKmiiIgI84Mx6faHWV999ZW8vLxsZogB96tNmzbav3+/9uzZo99//90m/EVERMjV1VU9evQwg3Z8fLwiIiLMM8w+Pj7Knj17qvek9957T6+//rqcnZ1Vvnx5m5sLSre/bq9nz553nH11L1WrVtXx48fl4eFh856xatUqbdy48Y7P8/LyUu7cubVp06ZU6/766y/9+OOPqlatms3yEydO6MSJE+bjI0eO6OTJk3ruueck3b5Pwvbt23X9+nWz5ttvv7WZHh4RESFPT0+1adPGDNoXLlzQb7/9ZjML5Z9/N6dnP6dOnap27drJMAzlypXL5h4Of//98aTizDaeKLVr19bQoUM1ffp0HTlyRK1bt1aBAgV0/PhxLV++XOfOndPMmTPNa8zy5MmjH3/8Ufv27bO5Tvtu2rRpo48++kjBwcHq06eP3N3dtWPHDi1duvRfc/0JHh9+fn7q37+/5s6dq8jISLVs2VL58uXTkSNHFBYWJnt7e02dOlWSVLZsWbVo0UIzZ87UtWvX5Ofnpx9//FELFixQy5YtVaZMGXPc2rVry8nJSWvWrNHAgQPvuH07OzsNHTpUISEhGjNmjBo2bKiDBw/q448/vmfvTZs21QcffKDevXurT58+euaZZxQbG6s9e/bok08+UXBwcKpLPiIiIjRq1Cg1a9ZMBw4c0IcffqgBAwaY0+peeeUVzZo1Szlz5lTVqlW1Y8cOmz+y8ufPr6JFi2r58uUqVKiQnJ2d9e2335p3W02ZepgyC2DHjh3Kmzevypcvr8GDB+vtt9+Wvb29ateurStXrmj27NmKjY01bxzj5eWluXPnKnv27PL09NTx48e1bt06m2mPQEZl5L0t5et4vvjiCxUoUEA1atTQtm3b9M0335i/C6wQHByszz77TF27dtWAAQPk5OSklStX6tixY3r//fct2w7+3erUqaP8+fPrrbfeUrly5cyztdLtm6h9/PHHCg0NVd26dXX+/HktWbJEFy9eNMO3m5ubOnfurLCwMGXLlk3+/v6KiIjQunXrNG7cOEnSwIED1b9/fw0dOlQtW7bU+fPnNX36dLVq1SrdNyD9p+DgYK1fv17du3dXt27dlCdPHq1fv16fffaZeePCtOTIkUMDBw7U5MmTdePGDTVs2FDZs2dXZGSkwsLCVLhw4VRTr5OTk9WvXz8NHjxYiYmJmj59usqUKaPmzZtLuv1h3ZYtW9SrVy91795dFy9e1Lvvvmtzcsjb21vz58/X+++/Lx8fH508eVILFy7UzZs3be6vkCdPHv3666/64Ycf5O3tna79rFGjhsLCwjRy5Ei1aNFCt27d0uLFi+Xq6mqeBHiiGcATaP/+/caAAQOMmjVrGpUqVTKef/55Y9y4ccapU6ds6lauXGn4+/sbPj4+RlRUlDF79mzjmWeeSTVeuXLljHnz5pmP//rrL2PkyJHGc889Z3h5eRlNmzY1Pvzww7s+B3iYtm7danTv3t0ICAgwvLy8jIYNGxrjxo0zLly4YFN369YtY86cOUa9evWMihUrGg0aNDAWLFhgJCYmphrzrbfeMjw9PY0zZ87YLE/rONm4caPRrFkzo1KlSkabNm2ML774wihXrpyxb9++u/YdFxdnTJ061WjYsKHh7e1tVK5c2WjXrp2xZs2aVLXlypUzJk+ebLz66quGl5eXERgYaCxfvjxV3fLly43AwECjUqVKRlBQkLFy5UqjXLlyRlRUlGEYhnH48GGjc+fOhq+vr1G1alXj5ZdfNv7zn/8YjRs3NoYMGWIYhmEkJycbo0aNMry8vIwXXnjBHPuLL74wWrVqZVSqVMl47rnnjAEDBhjHjx8318fHxxsTJkww6tata1SsWNGoXbu2MXnyZOP69et3fR2A9EjPe9vp06eNcuXKGQsXLjSCgoIMLy8vo1mzZsYXX3xhM9bf36P27NmT5vHauXNno2vXrmk+xzAM48SJE8arr75qPPvss4avr6/RuXNnY8+ePal6Wb9+vc24I0aMMJ5//vkHfj3w7xAaGmqUK1fOWLp0qc3y5ORk49133zVq165teHl5mcdDeHi4Ua5cOSMyMtIwDMNISkoyFi5caL4vNGvWzPj0009txtq6davRunVro1KlSkadOnWM6dOnm7+3165da/MektbPb1o/68ePHzcGDBhg/p3ZunXrVMfhnWzcuNHo1KmTUaVKFaNSpUpGYGCgMX78eCM6OtqmLqWX5cuXG9WrVzcqV65shISEpKr7+eefjc6dOxve3t5GvXr1jM8//9yoUaOGeTzfuHHDePvtt42AgADD29vbaNSokTF79mxjzpw5hpeXlxEbG2sYhmFs2bLFqF69ulGpUiUjIiIi3fu5ceNGo3Xr1oavr6/h5+dn9OzZ0zh69Gi6Xouszs4w7nFbZgAAHgOenp4aNGiQ+dVEAFI7c+aM+f3uLVu2zOx2ADxEI0eOVEREhL755pvMbgV3wDXbAAAAAABYjLANAAAAAIDFmEYOAAAAAIDFOLMNAAAAAIDFCNsAAAAAAFiMsA0AAAAAgMWyZXYDAADg4Rs5cqTWrVt3z7rWrVtr8uTJlmwzKChIZ8+e1bZt2ywZDwCArISwDQDAv0CHDh1UvXp183FERITCw8PVoUMHVa5c2VxevHhxy7bZt29fXbt2zbLxAADISgjbAAD8C/j5+cnPz898nJSUpPDwcPn6+qply5YPZZsBAQEPZVwAALICrtkGAAAAAMBihG0AAGDav3+/unXrZp4J79Kli/bt22dTU79+fb3xxhtavXq1AgMD5evrq44dO2rPnj02dUFBQapfv77NsmPHjmnQoEGqVq2aKleurKCgIO3fv99cf/PmTU2YMEGBgYGqVKmS6tSpo7fffltXrlx5eDsNAMBDQNgGAACSpK1btyooKEhRUVHq16+f+vXrp6ioKHXr1k1bt261qf3uu+/0zjvvqFGjRho0aJAuXbqknj176ocffrjj+CdOnNCLL76oPXv2qHPnzhoyZIhiYmIUHBys//73v5Kkd955R6tXr1azZs301ltvqVGjRlq1apVee+21h7rvAABYjWu2AQCAEhMT9c4778jd3V1r166Vs7OzJKljx4564YUX9Pbbb6t27drKnj27JOncuXOaN2+enn/+eUlSy5Yt1ahRI02fPl3h4eFpbmPWrFlKTEzUp59+qhIlSkiSmjZtqgYNGigsLEzvvvuuNmzYoLZt22rIkCHm83Lnzq1vv/1W8fHxcnJyepgvAwAAluHMNgAA0K+//qrz58+rU6dOZtCWpDx58qhz5866cOGCfv75Z3N56dKlzaAtSW5ubmrZsqUOHTqk6OjoVOMnJydr586dqlOnjhm0JcnV1VUrV67U6NGjJUmFCxfWpk2b9Omnn+rq1auSpMGDB2vt2rUEbQBAlkLYBgAAOnPmjCSpVKlSqdaVLl1a0u2z2SnKlCmTqq5EiRIyDENnz55NtS4mJkYJCQk2QTtFuXLlVLBgQUnS2LFjZRiGRo0aperVq6tTp05atmyZYmNj72/HAADIJIRtAAAgwzDuuS5lCvk//50iKSlJkuTg4HDHdfb2d//To3r16tq+fbtmzJihJk2aKDIyUpMmTVLz5s116dKle+8IAACPCcI2AABQ0aJFJUmRkZGp1h0/flzS7SneKU6dOpWq7uTJk3JwcNDTTz+dap2rq6ty5sypkydPploXFhamKVOm6ObNmzp06JBiY2PVrFkzTZs2Tbt379bw4cMVFRWljRs33vf+AQDwqBG2AQCAKlasqIIFC+rjjz9WXFycuTwuLk4rV65UwYIFValSJXP5Tz/9pIMHD5qPL168qM8//1zPPfec8ubNm2r8bNmyKSAgQDt37lRUVJS5/MqVKwoLC9OpU6cUExOjDh06aOHCheZ6e3t7eXl5mf8GACCr4G7kAABA2bNn15tvvqnBgwerbdu2ateunSRpzZo1+vPPPzV79mybsOvo6KhevXqpa9euypkzp1auXKnk5GQNHz78jtsICQlR+/bt1b59e/NGbKtWrVJCQoIGDx6sQoUKqXnz5lq5cqWuXbsmPz8/xcTE6KOPPlKBAgXUpEmTh/46AABgFcI2AACQJDVq1EhLlizR/PnzNW/ePGXLlk0+Pj6aMGGC/P39bWp9fX3VrFkzzZ8/X7GxsfL391dISIjKly9/x/E9PDwUHh6uGTNmaPHixbK3t5e3t7emTJmismXLSpLGjRunYsWKaePGjdq4caNy5cql6tWr67XXXpObm9tD3X8AAKxkZ9ztjigAAAD/UL9+fRUtWlQffvhhZrcCAMBji4ufAAAAAACwGGEbAAAAAACLEbYBAAAAALAY12wDAAAAAGAxzmwDAAAAAGAxwjYAAAAAABYjbAMAAAAAYDHCNgAAAAAAFiNsAwAAAABgMcI2AAAAAAAW+z/dJLRKd4qo2wAAAABJRU5ErkJggg==\n",
+      "text/plain": [
+       "<Figure size 1152x720 with 1 Axes>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# visualize distribution of topics\n",
+    "\n",
+    "#set plot style\n",
+    "sns.set_context('talk')\n",
+    "sns.set_style('whitegrid')\n",
+    "plt.figure(figsize=(16, 10)) \n",
+    "#plot data\n",
+    "ax=sns.countplot(x='dominant_topic', data = df_dominant_topic,palette='Blues')\n",
+    "_=plt.ylabel('Distribution')\n",
+    "_=plt.xlabel('Topics')\n",
+    "_=plt.title('Count of Responses per Topic')\n",
+    "_=ax.set_xticklabels(TOPICS)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Assign ratings within each topic"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 62,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from collections import defaultdict\n",
+    "topic_text_df = defaultdict(list)\n",
+    "\n",
+    "for topic in sorted(df_dominant_topic.dominant_topic.unique()):\n",
+    "    for rating, row in enumerate(df_dominant_topic[(df_dominant_topic.dominant_topic==topic)].sort_values('topic_perc_contrib', ascending=False).iterrows()):\n",
+    "        topic_text_df['topic'].append(topic)\n",
+    "        topic_text_df['text'].append(row[1].text)\n",
+    "        topic_text_df['rating'].append(rating+1)\n",
+    "        topic_text_df['tweet_id'].append(row[1].tweet_id)\n",
+    "        topic_text_df['index'].append(row[1].name)\n",
+    "\n",
+    "topic_text_df = pd.DataFrame.from_dict(topic_text_df)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 63,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "topic_text_df['topic_title']=topic_text_df.topic.map(TOPIC_MAP)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 64,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "topic_text_df.set_index('index',inplace=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 65,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>topic</th>\n",
+       "      <th>text</th>\n",
+       "      <th>rating</th>\n",
+       "      <th>tweet_id</th>\n",
+       "      <th>topic_title</th>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>index</th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>31757</th>\n",
+       "      <td>0.0</td>\n",
+       "      <td>When you nurture a tea leaf in such an intrica...</td>\n",
+       "      <td>1</td>\n",
+       "      <td>1.364878e+18</td>\n",
+       "      <td>Other</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>18771</th>\n",
+       "      <td>0.0</td>\n",
+       "      <td>#DespiertaColombia #COVID1984 #PLANdemia🚫😷 #Ma...</td>\n",
+       "      <td>2</td>\n",
+       "      <td>1.366488e+18</td>\n",
+       "      <td>Other</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>45471</th>\n",
+       "      <td>0.0</td>\n",
+       "      <td>#Curd . #Betterdigestion A #probiotic #dairypr...</td>\n",
+       "      <td>3</td>\n",
+       "      <td>1.366628e+18</td>\n",
+       "      <td>Other</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5750</th>\n",
+       "      <td>0.0</td>\n",
+       "      <td>#DespiertaMundo #DespiertaColombia #COVID1984 ...</td>\n",
+       "      <td>4</td>\n",
+       "      <td>1.366171e+18</td>\n",
+       "      <td>Other</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4170</th>\n",
+       "      <td>0.0</td>\n",
+       "      <td>#DespiertaColombia #YoNoMeVacuno #COVID1984 #P...</td>\n",
+       "      <td>5</td>\n",
+       "      <td>1.365530e+18</td>\n",
+       "      <td>Other</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       topic                                               text  rating  \\\n",
+       "index                                                                     \n",
+       "31757    0.0  When you nurture a tea leaf in such an intrica...       1   \n",
+       "18771    0.0  #DespiertaColombia #COVID1984 #PLANdemia🚫😷 #Ma...       2   \n",
+       "45471    0.0  #Curd . #Betterdigestion A #probiotic #dairypr...       3   \n",
+       "5750     0.0  #DespiertaMundo #DespiertaColombia #COVID1984 ...       4   \n",
+       "4170     0.0  #DespiertaColombia #YoNoMeVacuno #COVID1984 #P...       5   \n",
+       "\n",
+       "           tweet_id topic_title  \n",
+       "index                            \n",
+       "31757  1.364878e+18       Other  \n",
+       "18771  1.366488e+18       Other  \n",
+       "45471  1.366628e+18       Other  \n",
+       "5750   1.366171e+18       Other  \n",
+       "4170   1.365530e+18       Other  "
+      ]
+     },
+     "execution_count": 65,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "topic_text_df.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 66,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "2.0    25535\n",
+      "3.0    18023\n",
+      "0.0     1505\n",
+      "1.0     1261\n",
+      "Name: topic, dtype: int64 \n",
+      " 2.0    0.551226\n",
+      "3.0    0.389064\n",
+      "0.0    0.032489\n",
+      "1.0    0.027221\n",
+      "Name: topic, dtype: float64\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(topic_text_df.topic.value_counts(),'\\n',topic_text_df.topic.value_counts(normalize=True) )"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 67,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "1365306539112755200"
+      ]
+     },
+     "execution_count": 67,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "int(full_data.iloc[9402].tweet_id)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 68,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>topic</th>\n",
+       "      <th>text</th>\n",
+       "      <th>rating</th>\n",
+       "      <th>tweet_id</th>\n",
+       "      <th>topic_title</th>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>index</th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>18771</th>\n",
+       "      <td>0.0</td>\n",
+       "      <td>#DespiertaColombia #COVID1984 #PLANdemia🚫😷 #Ma...</td>\n",
+       "      <td>2</td>\n",
+       "      <td>1.366488e+18</td>\n",
+       "      <td>Other</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "       topic                                               text  rating  \\\n",
+       "index                                                                     \n",
+       "18771    0.0  #DespiertaColombia #COVID1984 #PLANdemia🚫😷 #Ma...       2   \n",
+       "\n",
+       "           tweet_id topic_title  \n",
+       "index                            \n",
+       "18771  1.366488e+18       Other  "
+      ]
+     },
+     "execution_count": 68,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "topic_text_df[(topic_text_df.topic==0.0) & (topic_text_df.rating==2)]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 69,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "tweet 0 | NEW: We’re expanding vaccine eligibility. Starting March 15th, the following essential workers are eligible: \n",
+      "\n",
+      "➡️Pre-K to 12 educators &amp; support staff\n",
+      "➡️Child care workers\n",
+      "➡️Transportation workers\n",
+      "➡️Additional public safety workers\n",
+      "\n",
+      "Watch our 1:00 PM COVID briefing for more info. \n",
+      " 25624\n",
+      "\n",
+      "\n",
+      "tweet 1 | This team crushed it this week with administering COVID19 doses! Wednesday - 32 @ Georgiaville Manor POD; Thursday - 157 @ Esmond Village POD; Thursday night - 40 @ Sr. Center POD; Saturday - 857 @ NRI Regional POD; and Sunday - 157 at the Senior Center POD. #ThisIsSmithfieldEMA https://t.co/1qsK44cayu \n",
+      " 30572\n",
+      "\n",
+      "\n",
+      "tweet 2 | 221.80 million COVID-19 Vaccination Doses Administered Worldwide (1st 💉)\n",
+      "\n",
+      "Top 3\n",
+      "USA 66.46 million (22.15%)\n",
+      "China 40.52 million (2.90%)\n",
+      "UK 18.91 million (28.37%)\n",
+      "\n",
+      "Australia 11 195 (0.04%)\n",
+      "\n",
+      "#Covid19 #COVID19Aus #COVID19US #COVID19UK #COVAX #Vaccine\n",
+      "Source: https://t.co/sC43UGXfaC https://t.co/0KVIrXO0fJ \n",
+      " 40403\n",
+      "\n",
+      "\n",
+      "tweet 3 | Targets scorecards 🎯 on 28 February\n",
+      "\n",
+      "✅32M by 15 Apr (15 days early on 31/03)\n",
+      "✅53M by 31 Jul (20 days early on 11/07)\n",
+      "\n",
+      "Those predictions are for 1st doses, and take into account the current combined 7-day average as well as the growing second doses debt.\n",
+      "\n",
+      "#vaccine #COVIDVaccine https://t.co/gFAt7scw2I \n",
+      " 41941\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "[None, None, None, None]"
+      ]
+     },
+     "execution_count": 69,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# see the top n rated tweets in t topic\n",
+    "p,n = 1,5 # tweets to print via rating number\n",
+    "tp = 3.0 # topic to print\n",
+    "[print('tweet {} | {} \\n {}\\n\\n'.format(i,x[0],x[1])) for i, x in enumerate(zip(topic_text_df[(topic_text_df.topic==tp)][p:n].text.tolist(),topic_text_df[(topic_text_df.topic==tp)][p:n].index.tolist()))]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Definitions of each topic<br>\n",
+    "\n",
+    "### Topic 0.0 = Seems to capture a few different types of tweets. | Other ###\n",
+    "   - Words/tweets that may not directly relate to covid. Such as: <br>\n",
+    "        **Tweet ID**: 1365829169729404928 <br>\n",
+    "        <blockquote>Multiply the Power of Your Immunity with TE-A-ME Ginger Tulsi Honey <br><br>\n",
+    "        #immunity #health #healthylifestyle #wellness #healthy #immunityboost #immunesystem #nutrition #fitness #immunesupport #immunitybooster #immunebooster #healthyfood #coronavirus #organic #natural #HealthyLiving https://t.co/AWRCxUr04e <br><br>\n",
+    "        </blockquote><br><br>\n",
+    "    - It also captures repeated (or slightly altered) tweets. And reapeated Words within a tweet <br>\n",
+    "       Tweet ID: 1366162536555544576 <br>\n",
+    "        <blockquote>Quack quack quack quack quack quack quack quackped quack the quacktential quack quackNA quack...but quacks a quack quack quack quackped quack.  https://t.co/VqprWbXgF8\n",
+    "        </blockquote> <br><br>\n",
+    "    \n",
+    "   - Some Coronavirus updates that have words and numbers vs full sentences:<br>\n",
+    "       **Tweet ID: 1365792572086628352**<br>\n",
+    "       <blockquote>@guardian Update to Pfizer and Oxford side effects, Reports: 22 Feb <br>\n",
+    "       Pfizer:  Reactions:  77,207    Blindness:  9    Deaths: 197 <br>\n",
+    "       Oxford: Reactions: 114,625  Blindness: 16    Deaths: 205 <br><br>\n",
+    "       Pfizer      Vax started 8 Dec <br>\n",
+    "       Oxford    Vax started 4 Jan <br><br>\n",
+    "       https://t.co/TBFttk2FiR  </blockquote><br><br>\n",
+    "       \n",
+    "   - Lists where words don't necessarily follow a structured sentence. Seen in a list of hashtags, @mentions,  and link/retweet or a tweet with a list of symptoms, a list of city locations where vaccine is available. <br>\n",
+    "    \n",
+    "      **Tweet ID: 1365306539112755200**\n",
+    "      <blockquote> Strengthen your immunity anytime, anywhere you go.<br><br>\n",
+    "   #Immunofizz #Immunity #StrengthensImmunityToStrengthenYou #VitaminC #NaturalAmla extract #Zinc https://t.co/SRZ73a4md3 </blockquote><br><br>\n",
+    "   \n",
+    "   Because most of these tweets contain 'lists' of some sort, it appears many of them have links in the tweets, although links were not in the training of the model.<br><br><br>\n",
+    "   \n",
+    " ### Topic 1.0 = Coronavirus Updates ###\n",
+    " - Tweets about updates to the number of cases, deaths, recovered, locations it's spread to, etc.\n",
+    "     <blockquote> #Unite2FightCorona<br><br>\n",
+    "\n",
+    "       21 States/UTs have not reported any #COVID19 deaths in last 24 hours. <br><br>\n",
+    "\n",
+    "        These are MP, Assam, Rajasthan, Haryana, J&amp;K,Odisha, AP, Goa,HP, Puducherry, Lakshadweep,Manipur, Sikkim,Tripura,Ladakh,Meghalaya, Mizoram, Nagaland, Ar. Pradesh, A&amp;N Islands, D&amp;D and D&amp;N. \n",
+    " </blockquote><br><br>\n",
+    " \n",
+    "  ### Topic 2.0 = Coronavirus Updates |  Opinion ###\n",
+    " - These tweets seem to include opinion on coronavirus and a mix of political views\n",
+    "     <blockquote> @barron1946_john @Spiritual_Leo Republican #goals <br>\n",
+    "                Keep:<br>\n",
+    "                1. The Bill of Rights<br>\n",
+    "                2. The US Constitution<br>\n",
+    "                3. #mask a choice<br>\n",
+    "                4. #vaccine a choice<br>\n",
+    "                5. Ban abortion<br>\n",
+    "                5. Ban gender politics<br>\n",
+    "                6. Ban monopoly of tv,  news, tech, voter machines<br>\n",
+    "                8. Mandatory voter ID <br>\n",
+    "                9. Illegals need citizenship or deport<br>\n",
+    "                10. Keep borders<br>\n",
+    "                .. <br>\n",
+    " </blockquote><br><br>\n",
+    " \n",
+    "  ### Topic 3.0 = Vaccine Updates ###\n",
+    " - These tweets seem to include information on the vaccine. Distribution, report updates, sites, news etc.\n",
+    "     <blockquote> NEW: We’re expanding vaccine eligibility. Starting March 15th, the following essential workers are eligible: <br><br>\n",
+    "                ➡️Pre-K to 12 educators &amp; support staff<br>\n",
+    "                ➡️Child care workers<br>\n",
+    "                ➡️Transportation workers<br>\n",
+    "                ➡️Additional public safety workers<br><br>\n",
+    "                Watch our 1:00 PM COVID briefing for more info. </blockquote><br><br>\n",
+    "                 \n",
+    " \n",
+    " It appears that topic 0.0 / Other, is a mixed when it comes to the types of tweets that are there. It could be that these are removed entirely, as it seems that there are some that do not have to do with coronavirus, but were included due to some of the key words that were used in the tweet (ie. 'immunity'). It's interesting that some of the update tweets about coronavirus were listed in this category, an assumption is becuase 'vaccine' or 'coronavirus' were not used in the tweet update. Additional cleaning is also another option. Removing all duplicate emails if they are extremely similar (vs exactly the same), may help to clean this particular topic. \n",
+    " <br><br>The other topics seems to be pretty clear. It is also interesting that topic 0.0 had a minority amoutn of tweets in the dataset at 3.2%. Topic 1.0 had the least number of tweets at 2.7%. This would indicate that there is a higher focus on the vaccine in the tweets, and strictly coronavirus updates are not a large part of the communiction in the twitter verse. \n",
+    " "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### View the topic tweets in each topic"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 70,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Topic:  Other ---- Tweet 1 of 5\n",
+      " When you nurture a tea leaf in such an intricate manner, you get a delicate, handcrafted tea with the best of its essence. This is how we conjure Kumud our signature Oolong tea.\n",
+      "#kumud #oolong #oolongtea #TeaMonk #detoxtea #tea #benefitsoftea #Teatime #Immunity #newlaunch https://t.co/EwMwNbCFQV \n",
+      "\n",
+      "31757 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Other ---- Tweet 2 of 5\n",
+      " #DespiertaColombia #COVID1984 #PLANdemia🚫😷 #ManipulaciónMediatica #GranHermano2020 #CoronaMiedo #MiedoVirus #Event201 #Agenda2030 #GreatAwakening #BigPharma #NoVacunas 💉☠ #WarpSpeed Operation #NightingaleProject #BigReset  #GreatReset #DICTADURA #NWO\n",
+      "\n",
+      " https://t.co/TDP2BRyMRQ \n",
+      "\n",
+      "18771 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Other ---- Tweet 3 of 5\n",
+      " #Curd . #Betterdigestion A #probiotic #dairyproduct . #immunity . #Healthyskin . Better #bonehealth . Better health details: +91-124-6790-466\n",
+      "#nutrafy #nutrafywellness #crazybulk #crazybulkindia #healthandwellness #healthbenefit #healthbenefits #FYI #DIY #curd https://t.co/ptPoILpFlp \n",
+      "\n",
+      "45471 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Other ---- Tweet 4 of 5\n",
+      " #DespiertaMundo #DespiertaColombia #COVID1984 #PLANdemia #ManipulaciónMediatica #GranHermano2020 #CoronaMiedo #MiedoVirus #Agenda201  #Evento201 #Agenda21 #Agenda2030 #GreatAwakening #BigPharma #Vacunas #WarpSpeed Operatio #NightingaleProject #BigReset #GreatReset #DICTADURA #NOM https://t.co/LJUTMe9XKe \n",
+      "\n",
+      "5750 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Other ---- Tweet 5 of 5\n",
+      " #DespiertaColombia #YoNoMeVacuno #COVID1984 #PLANdemia #ManipulaciónMediatica #GranHermano2020 #CoronaMiedo #MiedoVirus #Evento201 #Agenda21 #Agenda2030 #GreatAwakening #BigPharma #Vacunas #WarpSpeed Operatio #NightingaleProject #BigReset #GreatReset #NormalizandoLaDictadura #NWO https://t.co/IOopWylusA \n",
+      "\n",
+      "4170 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Covid Updates ---- Tweet 1 of 5\n",
+      " #COVID19 🇮🇳Night Update\n",
+      "27/02/21, 10PM:\n",
+      "\n",
+      "♦️Ranking\n",
+      "\n",
+      "1. Kerala:3792\n",
+      "2. MH:8623\n",
+      "3. PB:593\n",
+      "4. K’tka:523\n",
+      "5. TN:486\n",
+      "6. GJ:451\n",
+      "7. MP:390\n",
+      "8. Delhi:243\n",
+      "9. WB:210\n",
+      "10. HR:199\n",
+      "11. TS:178\n",
+      "12. AP:118\n",
+      "13. RJ:102\n",
+      "14. J&amp;K:97\n",
+      "15. OD:86\n",
+      "\n",
+      "Today’s #coronavirus \n",
+      "Total: 16473\n",
+      "💀: 105\n",
+      "Recovery: 11226 https://t.co/Guo9VPMQRv \n",
+      "\n",
+      "32949 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Covid Updates ---- Tweet 2 of 5\n",
+      " #COVID19 🇮🇳Night Update\n",
+      "24/02/21, 10PM:\n",
+      "\n",
+      "♦️Ranking\n",
+      "\n",
+      "1. MH:8807\n",
+      "2. Kerala:4106\n",
+      "3. PB:558\n",
+      "4. GJ:380\n",
+      "5. K’tka:334\n",
+      "6. CG:247\n",
+      "7. WB:202\n",
+      "8. Delhi:200\n",
+      "9. HR:130\n",
+      "10. RJ:99\n",
+      "11. AP:94\n",
+      "12. J&amp;K:74\n",
+      "13. OD:67\n",
+      "14. BR:54\n",
+      "15. Goa:52\n",
+      "\n",
+      "Today’s #coronavirus \n",
+      "Total: 15541\n",
+      "💀: 124\n",
+      "Recovery: 10221 https://t.co/Fx6Vwp44e2 \n",
+      "\n",
+      "35177 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Covid Updates ---- Tweet 3 of 5\n",
+      " #COVID19 🇮🇳Night Update\n",
+      "25/02/21, 10PM:\n",
+      "\n",
+      "♦️Ranking\n",
+      "\n",
+      "1. MH:8702\n",
+      "2. Kerala:3677\n",
+      "3. PB:563\n",
+      "4. TN:467\n",
+      "5. K’tka:453\n",
+      "6. GJ:424\n",
+      "7. MP:368\n",
+      "8. Delhi:220\n",
+      "9. TS:207\n",
+      "10. WB:199\n",
+      "11. HR:166\n",
+      "12. RJ:128\n",
+      "13. J&amp;K:108\n",
+      "14. OD:89\n",
+      "15. AP:82\n",
+      "\n",
+      "Today’s #coronavirus \n",
+      "Total: 16105\n",
+      "💀: 106\n",
+      "Recovery: 11720 https://t.co/uz4loKmsiS \n",
+      "\n",
+      "24631 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Covid Updates ---- Tweet 4 of 5\n",
+      " #Unite2FightCorona\n",
+      "\n",
+      "21 States/UTs have not reported any #COVID19 deaths in last 24 hours. \n",
+      "\n",
+      "These are MP, Assam, Rajasthan, Haryana, J&amp;K,Odisha, AP, Goa,HP, Puducherry, Lakshadweep,Manipur, Sikkim,Tripura,Ladakh,Meghalaya, Mizoram, Nagaland, Ar. Pradesh, A&amp;N Islands, D&amp;D and D&amp;N. \n",
+      "\n",
+      "42631 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Covid Updates ---- Tweet 5 of 5\n",
+      " 21 States/UTs - #Odisha, MP, Assam, Rajasthan, Haryana, J&amp;K, AP, Goa, HP, Puducherry, Lakshadweep, Manipur, Sikkim, Tripura, Ladakh, Meghalaya, Mizoram, Nagaland, Ar. Pradesh, A&amp;N Islands, D&amp;D and D&amp;N - have not reported any #COVID19 deaths in last 24 hours: Ministry of Health \n",
+      "\n",
+      "42637 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Opinion ---- Tweet 1 of 5\n",
+      " 👀👀👀👀👀👀👀👀👀\n",
+      "🤦🏿‍♀️🤦🏿‍♀️🤦🏿‍♀️🤦🏿‍♀️🤦🏿‍♀️🤦🏿‍♀️🤦🏿‍♀️🤦🏿‍♀️🤦🏿‍♀️\n",
+      "The longer people in this part of the world remain unvaccinated, the more they'll miss out on such important life events\n",
+      "\n",
+      "#VaccinesWork \n",
+      "#VaccineEquity https://t.co/xvWS2NWNbm \n",
+      "\n",
+      "43527 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Opinion ---- Tweet 2 of 5\n",
+      " @barron1946_john @Spiritual_Leo Republican #goals\n",
+      "Keep:\n",
+      "1. The Bill of Rights\n",
+      "2. The US Constitution\n",
+      "3. #mask a choice\n",
+      "4. #vaccine a choice\n",
+      "5. Ban abortion\n",
+      "5. Ban gender politics\n",
+      "6. Ban monopoly of tv,  news, tech, voter machines\n",
+      "8. Mandatory voter ID \n",
+      "9. Illegals need citizenship or deport\n",
+      "10. Keep borders\n",
+      ".. \n",
+      "\n",
+      "24677 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Opinion ---- Tweet 3 of 5\n",
+      " @PeterHotez @Gigi_MCal It is foreign agents pushing garbage: anti-vax, covid-hoax. 95% didnt die of COVID, PCR doesnt work, asymptomatic tr. doesnt happen, masks are a political symbol, natural herd immunity great idea, its just the flu, kids cant get it, stay-at-home doesnt work, safe to dine-out, etc \n",
+      "\n",
+      "1034 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Opinion ---- Tweet 4 of 5\n",
+      " @CSandbox @DrDooleyMD I hate 2 say it but hypothesis of various doctors / evidence oFMANDATORY FLU VAX stats from MILITARY show u got flu shot &amp; u hv higher % get sick w covid19 disease not SARS COV2! Italians had highest population OLD FOLKS ESP of lethal FLU VAX &amp; worst covid19 disaster! All connecT \n",
+      "\n",
+      "22941 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Opinion ---- Tweet 5 of 5\n",
+      " In trying to figure out post-vax life, I think this is a useful approximation: \n",
+      "\n",
+      "Covid risk after vax = flu risk\n",
+      "\n",
+      "Covid roughly 100x danger of flu: 10x fatality rate (1% vs 0.1%) &amp; 10x susceptible (100% vs 10%). But vax cuts down mortality risk by 99%. https://t.co/7z7gdY4Gt5 \n",
+      "\n",
+      "37101 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Vaccine Updates ---- Tweet 1 of 5\n",
+      " 🚨Wow ! Teams working around the clock to get the 💉. \n",
+      "👉🏼Friday - FDA panel vote✅\n",
+      "👉🏼Saturday- FDA EUA✅\n",
+      "👉🏼Sunday- CDC panel vote✅\n",
+      "Beginning to ship to a clinic near you ! 👏🏼👏🏼👏🏼\n",
+      "\n",
+      " J&amp;J's COVID-19 shot gets CDC panel backing; vaccine near shipping @Reuters https://t.co/xBpOrtuXGF \n",
+      "\n",
+      "42669 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Vaccine Updates ---- Tweet 2 of 5\n",
+      " NEW: We’re expanding vaccine eligibility. Starting March 15th, the following essential workers are eligible: \n",
+      "\n",
+      "➡️Pre-K to 12 educators &amp; support staff\n",
+      "➡️Child care workers\n",
+      "➡️Transportation workers\n",
+      "➡️Additional public safety workers\n",
+      "\n",
+      "Watch our 1:00 PM COVID briefing for more info. \n",
+      "\n",
+      "25624 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Vaccine Updates ---- Tweet 3 of 5\n",
+      " This team crushed it this week with administering COVID19 doses! Wednesday - 32 @ Georgiaville Manor POD; Thursday - 157 @ Esmond Village POD; Thursday night - 40 @ Sr. Center POD; Saturday - 857 @ NRI Regional POD; and Sunday - 157 at the Senior Center POD. #ThisIsSmithfieldEMA https://t.co/1qsK44cayu \n",
+      "\n",
+      "30572 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Vaccine Updates ---- Tweet 4 of 5\n",
+      " 221.80 million COVID-19 Vaccination Doses Administered Worldwide (1st 💉)\n",
+      "\n",
+      "Top 3\n",
+      "USA 66.46 million (22.15%)\n",
+      "China 40.52 million (2.90%)\n",
+      "UK 18.91 million (28.37%)\n",
+      "\n",
+      "Australia 11 195 (0.04%)\n",
+      "\n",
+      "#Covid19 #COVID19Aus #COVID19US #COVID19UK #COVAX #Vaccine\n",
+      "Source: https://t.co/sC43UGXfaC https://t.co/0KVIrXO0fJ \n",
+      "\n",
+      "40403 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n",
+      "Topic:  Vaccine Updates ---- Tweet 5 of 5\n",
+      " Targets scorecards 🎯 on 28 February\n",
+      "\n",
+      "✅32M by 15 Apr (15 days early on 31/03)\n",
+      "✅53M by 31 Jul (20 days early on 11/07)\n",
+      "\n",
+      "Those predictions are for 1st doses, and take into account the current combined 7-day average as well as the growing second doses debt.\n",
+      "\n",
+      "#vaccine #COVIDVaccine https://t.co/gFAt7scw2I \n",
+      "\n",
+      "41941 \n",
+      "\n",
+      "+++++++++++++++++++++++++++++++++++++++++++++ \n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "twts_print=5 # number of top tweets per topic to print\n",
+    "\n",
+    "for t in topic_text_df.topic_title.unique():\n",
+    "    for twt in range(1,twts_print+1):\n",
+    "        print('Topic: ',t, \"---- Tweet {} of {}\\n {} \\n\".format(twt,\n",
+    "                                                           twts_print,\n",
+    "                                                           topic_text_df[(topic_text_df.topic_title==t) & (topic_text_df.rating==twt)].text.values[0]))\n",
+    "        print(topic_text_df[(topic_text_df.topic_title==t) & (topic_text_df.rating==twt)].index.values[0],'\\n')\n",
+    "        print('+++++++++'*5,'\\n')\n",
+    "\n",
+    "        "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 71,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "dd=pd.merge(full_data,topic_text_df.drop(['tweet_id'],axis=1), how='left', left_index=True, right_index=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 72,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# add the distribution of topics\n",
+    "topics_df.columns = topic_cols"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 73,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "dd=pd.merge(dd,topics_df, how='left', left_index=True, right_index=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 74,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "dd=pd.merge(dd,df_dominant_topic[['dominant_topic','topic_perc_contrib','keywords']], how='left', left_index=True, right_index=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 75,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0"
+      ]
+     },
+     "execution_count": 75,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# check for duplicate tweets\n",
+    "dd.duplicated(subset=['full_text']).sum()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 76,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "dd.to_csv(data_path+'\\\\'+'topics_data_4_topics.csv', index=False)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "dk-covid",
+   "language": "python",
+   "name": "dk-covid"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.8"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
