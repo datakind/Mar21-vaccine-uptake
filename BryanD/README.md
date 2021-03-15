@@ -21,6 +21,7 @@ There were 3 topics that were found overall. LDA models were also made with 4 an
 - The topics that were further divided out may help benefit with further analysis. One of the topics labeled 'other' were tweets that seemed to be captured because the tweet had a keyword that was searched to scrape the data. Such as talking about  beer 'corona' or a tweet about a drink that can boost 'immunity'. Keeping this topic, then removing it, may prove useful if further EDA is used.
 
 <img src="data/coherence_values.png"/>
+
 ## Preprocessing
 
 ###### Notebook 1.0 exploration
@@ -114,7 +115,7 @@ When plotting the coherent values, it was a bit tough to determine the amount of
 
 - Data was imported and Vader & Texblob sentiment analysis was completed by tweet and by day.
 - Different cutoffs were tried to label a tweet as positive or negative. There was difficulty in finding the best cutoff using either Textblob and/or Vader. 
-	- ***DNN or some other ML sentiment may work better to capture sarcasm in the tweet data
+	- ***A neural network or some other ML sentiment may work better to capture sarcasm in the tweet data**
 - Subjectivity was included into the analysis***
 - Sentiment for the whole dataset by day was graphed
 - Sentiment by day per topic was graphed
@@ -126,7 +127,7 @@ When plotting the coherent values, it was a bit tough to determine the amount of
 	- Which twitter users were the most positive or negative?
 
 <img src="data/neu_distribution.png"/>
-
+This chart is interesting as it seems to support the assumption on topics. The 'Vaccine' and 'Pandemic' models show a higher relative amount of neutral tweets, whereas the 'Opinion' has less neutral tweets, but more tweets overall than the other two groups. The same graphs showing positive and negative sentiments show 'Opinion' with the highest distribution.<br>
 
 ## Topics over time
 ###### Notebook 03-01-topics-over-time
