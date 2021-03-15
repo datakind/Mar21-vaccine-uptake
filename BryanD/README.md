@@ -33,7 +33,7 @@ Listed here are a few of the steps to preprocessing that were completed.
 - URL links were removed, and placed in a separate column in the dataset
 - @mentions were removed, except for the top 30 used mentions. For similar reasons above. The mentions in some instances will give more context for the model to create topics, and on the other hand many of the @mentions were used very scarcely. The '@' symbol was also removed.
 - n-grams: 2-6 ngrams were created
-
+![](./data/2+grams.png =100x)
 <img src="data/2+grams.png"/>
 
 ## Latent Topics
