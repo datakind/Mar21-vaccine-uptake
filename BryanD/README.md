@@ -19,6 +19,7 @@ This is a beginning step. Now that the topics have been created, I believe the n
 There were 3 topics that were found overall. LDA models were also made with 4 and 5 topics. Further topics subdivided the topics that I labeled as 'Opinion' and 'Pandemic Updates'. 
 
 - The topics that were further divided out may help benefit with further analysis. One of the topics labeled 'other' were tweets that seemed to be captured because the tweet had a keyword that was searched to scrape the data. Such as talking about  beer 'corona' or a tweet about a drink that can boost 'immunity'. Keeping this topic, then removing it, may prove useful if further EDA is used.
+- <img src="data/topic_distribution.png"/>
 
 ## Preprocessing
 ###### Notebook 1.0 exploration
@@ -32,6 +33,8 @@ Listed here are a few of the steps to preprocessing that were completed.
 - URL links were removed, and placed in a separate column in the dataset
 - @mentions were removed, except for the top 30 used mentions. For similar reasons above. The mentions in some instances will give more context for the model to create topics, and on the other hand many of the @mentions were used very scarcely. The '@' symbol was also removed.
 - n-grams: 2-6 ngrams were created
+
+<img src="data/2+grams.png"/>
 
 ## Latent Topics
 ###### Notebook 02 - LDA-Modeling & Notebook 025-LDA Exploration
