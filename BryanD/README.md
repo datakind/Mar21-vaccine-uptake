@@ -110,7 +110,7 @@ When plotting the coherent values, it was a bit tough to determine the amount of
 ## Sentiment Analysis
 ###### Notebook 03-Sentiment Analysis
 
-<img src="data/sent_over_time.png"/>
+<img src="data/sentbyday.png"/>
 
 - Data was imported and Vader & Texblob sentiment analysis was completed by tweet and by day.
 - Different cutoffs were tried to label a tweet as positive or negative. There was difficulty in finding the best cutoff using either Textblob and/or Vader. 
