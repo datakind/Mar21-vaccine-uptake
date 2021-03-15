@@ -109,7 +109,9 @@ When plotting the coherent values, it was a bit tough to determine the amount of
 
 ## Sentiment Analysis
 ###### Notebook 03-Sentiment Analysis
+
 <img src="data/sent_over_time.png"/>
+
 - Data was imported and Vader & Texblob sentiment analysis was completed by tweet and by day.
 - Different cutoffs were tried to label a tweet as positive or negative. There was difficulty in finding the best cutoff using either Textblob and/or Vader. 
 	- ***DNN or some other ML sentiment may work better to capture sarcasm in the tweet data
@@ -124,6 +126,8 @@ When plotting the coherent values, it was a bit tough to determine the amount of
 	- Which twitter users were the most positive or negative?
 
 <img src="data/neu_distribution.png"/>
+
+
 ## Topics over time
 ###### Notebook 03-01-topics-over-time
 Viewed the topic distribution over time. For this graph and many others that look at a variable over time, it would be interesting to see these distributions across a longer time span.
